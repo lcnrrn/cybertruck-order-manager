@@ -1,6 +1,7 @@
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import { SMS_TEMPLATES, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { getSourceColor } from '../sources';
 
 interface Props {
   order: Order;
@@ -36,7 +37,15 @@ export function OrderCard({
           </button>
         </div>
         {order.group ? (
-          <span className="order-group order-source-badge" title="주문 경로">
+          <span
+            className="order-group order-source-badge"
+            title="주문 경로"
+            style={{
+              background: getSourceColor(order.group).bg,
+              borderColor: getSourceColor(order.group).border,
+              color: getSourceColor(order.group).text,
+            }}
+          >
             {order.group}
           </span>
         ) : null}
