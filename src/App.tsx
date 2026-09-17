@@ -1,11 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Order, StatusFilter } from './types';
+import type { SourceFilter } from './sources';
+import { buildSourceFilterOptions } from './sources';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
 import { StatusFilterBar } from './components/StatusFilter';
+import { SourceFilterBar } from './components/SourceFilter';
 import { Toast } from './components/Toast';
 import { GoogleSyncBar } from './components/GoogleSyncBar';
 import { GoogleSettings } from './components/GoogleSettings';
@@ -24,6 +27,7 @@ export default function App() {
     importOrders,
   } = useOrders();
   const [filter, setFilter] = useState<StatusFilter>('전체');
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('전체');
   const [query, setQuery] = useState('');
   const [sheet, setSheet] = useState<Sheet>('none');
   const [editing, setEditing] = useState<Order | null>(null);
@@ -37,7 +41,7 @@ export default function App() {
     onToast: showToast,
   });
 
-  const filtered = useFilteredOrders(orders, filter, query);
+  const filtered = useFilteredOrders(orders, filter, sourceFilter, query);
 
   const counts = useMemo(() => {
     const c = { 전체: orders.length, 대기: 0, 제작중: 0, 완료: 0 } as Record<
@@ -47,6 +51,8 @@ export default function App() {
     for (const o of orders) c[o.status] += 1;
     return c;
   }, [orders]);
+
+  const sourceOptions = useMemo(() => buildSourceFilterOptions(orders), [orders]);
 
   const handleCopy = useCallback(
     async (order: Order) => {
@@ -157,10 +163,15 @@ export default function App() {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="이름 · 연락처 검색"
+          placeholder="이름 · 연락처 · 주문 경로 검색"
           enterKeyHint="search"
         />
         <StatusFilterBar value={filter} counts={counts} onChange={setFilter} />
+        <SourceFilterBar
+          options={sourceOptions}
+          value={sourceFilter}
+          onChange={setSourceFilter}
+        />
       </div>
 
       <main className="order-list">

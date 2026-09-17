@@ -6,6 +6,7 @@ export interface Order {
   items: string;
   address: string;
   phone: string;
+  /** 주문 경로 (UI label). Sheet column stays `group` for sync. */
   group?: string;
   status: OrderStatus;
   priority: boolean;

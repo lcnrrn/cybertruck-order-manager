@@ -615,3 +615,88 @@ a {
   color: var(--accent);
   word-break: break-all;
 }
+
+
+/* —— 주문 경로 (Order.group) —— */
+.source-filter-bar {
+  margin-top: 2px;
+}
+
+.source-filter-chip {
+  font-size: 13px;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.source-field {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.source-field legend {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.source-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.source-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.source-chip {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.source-chip.active {
+  background: #0c4a6e;
+  border-color: var(--accent-strong);
+  color: var(--text);
+}
+
+.source-custom-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 15px;
+}
+
+.source-custom-input:focus {
+  outline: none;
+  border-color: var(--accent-strong);
+}
+
+.source-required-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #f87171;
+}
+
+.order-source-badge {
+  background: #0c4a6e;
+  color: #e0f2fe;
+  border: 1px solid #0284c7;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
