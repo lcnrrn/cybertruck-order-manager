@@ -1,7 +1,7 @@
 # 사이버트럭 주문 관리
 
 3D 프린트 Cybertruck 악세서리 판매용 **모바일 우선** 주문 관리 웹앱입니다.  
-Apple 미리알림의 한 줄 메모를 대체하며, 데이터는 브라우저 `localStorage`에만 저장됩니다 (서버 없음).
+Apple 미리알림의 한 줄 메모를 대체하며, 기본은 브라우저 `localStorage` 캐시이며, **Google 스프레드시트**에 연결하면 폰·맥북이 같은 주문 목록을 공유합니다 (서버 없음 · Sheets API).
 
 ## 기능
 
@@ -11,6 +11,7 @@ Apple 미리알림의 한 줄 메모를 대체하며, 데이터는 브라우저 
 - **문자(SMS)** `sms:` 링크 · 「제작 완료」「발송 안내」 짧은 한국어 템플릿
 - **네이버 폼 Excel(.xlsx)/CSV 가져오기** (설문 답변 컬럼 자동 매핑)
 - 미리알림 스타일 **붙여넣기 가져오기** (best-effort 파싱)
+- **구글 시트 동기화** (Google Identity Services · Sheets API v4) — 기기 간 주문 공유
 - PWA: iPhone 홈 화면 추가 가능 · 다크 테마 · 큰 터치 영역
 
 ## 로컬 실행
@@ -72,8 +73,52 @@ npx gh-pages -d dist
 2. 공유 버튼 → **홈 화면에 추가**
 3. 이름 확인 후 추가 → 앱처럼 전체 화면으로 실행됩니다
 
-> 데이터는 **기기·브라우저마다** 따로 저장됩니다. 기기 변경·캐시 삭제 시 주문이 사라질 수 있으니, 중요하면 붙여넣기 내보내기(복사)로 백업하세요.
+> 구글 시트에 연결하지 않으면 데이터는 **기기·브라우저마다** 따로 저장됩니다. 시트 연결 후에는 시트가 원본이고, localStorage는 오프라인 캐시입니다.
 
+
+
+## 구글 시트 동기화 설정
+
+폰과 맥북이 **같은 Google 스프레드시트**로 주문 목록을 공유합니다. Client ID는 공개되어도 되며, API 비밀키는 저장소에 넣지 않습니다.
+
+### 1. Google Cloud에서 Sheets API 사용 설정
+
+1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트 생성(또는 선택)
+2. **API 및 서비스 → 라이브러리**에서 **Google Sheets API** 검색 후 **사용 설정**
+
+### 2. OAuth 웹 클라이언트 만들기
+
+1. **API 및 서비스 → 사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID**
+2. 애플리케이션 유형: **웹 애플리케이션**
+3. **승인된 JavaScript 원본**에 추가:
+   - `https://lcnrrn.github.io`
+   - `http://localhost:5173` (로컬 개발)
+4. 리디렉션 URI는 GIS 토큰 클라이언트만 쓸 경우 비워도 됩니다.
+5. 생성된 **클라이언트 ID**를 복사합니다. (`….apps.googleusercontent.com`)
+
+### 3. 스프레드시트 준비
+
+1. Google 드라이브에서 새 스프레드시트 생성 (본인 계정 소유)
+2. URL의 `/d/` 와 `/edit` 사이 문자열이 **스프레드시트 ID**입니다.
+3. 앱이 처음 동기화할 때 `Orders` 탭과 헤더 행을 자동 생성합니다.  
+   헤더: `id | name | items | address | phone | group | status | priority | updatedAt | createdAt`
+
+### 4. 앱에 붙여넣기
+
+1. 배포된 앱(또는 로컬) 상단 **구글 시트 연결** / **설정**
+2. **OAuth Client ID**와 **스프레드시트 ID** 붙여넣기 → 저장
+3. **구글 시트 연결**(또는 저장 후 연결) → Google 계정으로 로그인 · 스프레드시트 권한 허용
+4. 첫 동기화 후, 주문 추가·수정·삭제가 약 0.4초 디바운스로 시트에 반영됩니다. **동기화** 버튼으로 수동 pull+merge 가능.
+
+환경 변수로 기본값을 넣을 수도 있습니다 (선택):
+
+```bash
+# .env (저장소에 커밋하지 마세요 — .env.example 참고)
+VITE_GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+VITE_GOOGLE_SHEET_ID=your_spreadsheet_id
+```
+
+앱 설정 화면의 값이 있으면 환경 변수보다 **localStorage 오버라이드가 우선**입니다.
 
 ## 네이버 폼 Excel 가져오기
 
@@ -98,6 +143,7 @@ npx gh-pages -d dist
 
 - Vite + React + TypeScript
 - `vite-plugin-pwa` (서비스 워커 · 웹 매니페스트)
+- Google Identity Services + Sheets API v4 (선택적 동기화)
 - 의존성 최소화 · 백엔드 없음
 
 ## 라이선스
