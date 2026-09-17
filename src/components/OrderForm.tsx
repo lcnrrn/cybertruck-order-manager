@@ -17,6 +17,7 @@ interface Props {
   initial?: Order | null;
   onSubmit: (values: OrderFormValues) => void;
   onCancel: () => void;
+  sources: string[];
 }
 
 const empty: OrderFormValues = {
@@ -29,7 +30,7 @@ const empty: OrderFormValues = {
   priority: false,
 };
 
-export function OrderForm({ initial, onSubmit, onCancel }: Props) {
+export function OrderForm({ initial, onSubmit, onCancel, sources }: Props) {
   const [values, setValues] = useState<OrderFormValues>(empty);
 
   useEffect(() => {
@@ -118,7 +119,7 @@ export function OrderForm({ initial, onSubmit, onCancel }: Props) {
 
       <fieldset className="field source-field">
         <legend>주문 경로</legend>
-        <SourcePicker value={values.group} onChange={(v) => set('group', v)} />
+        <SourcePicker value={values.group} onChange={(v) => set('group', v)} sources={sources} />
       </fieldset>
 
       <fieldset className="field">
