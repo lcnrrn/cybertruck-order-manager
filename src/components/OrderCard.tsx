@@ -7,7 +7,7 @@ interface Props {
   onEdit: (order: Order) => void;
   onDelete: (id: string) => void;
   onStatus: (id: string, status: OrderStatus) => void;
-  onCopy: (order: Order) => void;
+  copyText: (text: string, okMessage: string) => void;
   onTogglePriority: (id: string) => void;
 }
 
@@ -16,7 +16,7 @@ export function OrderCard({
   onEdit,
   onDelete,
   onStatus,
-  onCopy,
+  copyText,
   onTogglePriority,
 }: Props) {
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
@@ -48,6 +48,37 @@ export function OrderCard({
         <p className="order-phone">{formatPhoneDisplay(order.phone) || '연락처 없음'}</p>
       </div>
 
+      <div className="copy-row" role="group" aria-label="복사">
+        <button
+          type="button"
+          className="btn btn-copy"
+          onClick={() => copyText(order.name, '이름 복사됨')}
+        >
+          이름
+        </button>
+        <button
+          type="button"
+          className="btn btn-copy"
+          onClick={() => copyText(order.address, '주소 복사됨')}
+        >
+          주소
+        </button>
+        <button
+          type="button"
+          className="btn btn-copy"
+          onClick={() => copyText(order.phone, '연락처 복사됨')}
+        >
+          연락처
+        </button>
+        <button
+          type="button"
+          className="btn btn-copy btn-copy-post"
+          onClick={() => copyText(`${order.address}\n${order.phone}`, '복사됨')}
+        >
+          우체국용
+        </button>
+      </div>
+
       <div className="status-row" role="group" aria-label="상태 변경">
         {STATUS_OPTIONS.map((s) => (
           <button
@@ -62,9 +93,6 @@ export function OrderCard({
       </div>
 
       <div className="action-row">
-        <button type="button" className="btn btn-primary" onClick={() => onCopy(order)}>
-          주소·연락처 복사
-        </button>
         {phoneOk ? (
           <div className="sms-group">
             <a className="btn btn-secondary" href={buildSmsLink(order.phone)}>
