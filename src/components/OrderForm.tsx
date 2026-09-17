@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
+import {
+  joinItems,
+  parseItemsAgainstCatalog,
+  type Product,
+} from '../products';
 import { SourcePicker } from './SourcePicker';
 
 export type OrderFormValues = {
@@ -18,6 +23,7 @@ interface Props {
   onSubmit: (values: OrderFormValues) => void;
   onCancel: () => void;
   sources: string[];
+  products: Product[];
 }
 
 const empty: OrderFormValues = {
@@ -30,8 +36,16 @@ const empty: OrderFormValues = {
   priority: false,
 };
 
-export function OrderForm({ initial, onSubmit, onCancel, sources }: Props) {
+export function OrderForm({
+  initial,
+  onSubmit,
+  onCancel,
+  sources,
+  products,
+}: Props) {
   const [values, setValues] = useState<OrderFormValues>(empty);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [itemsNote, setItemsNote] = useState('');
 
   useEffect(() => {
     if (initial) {
@@ -44,13 +58,31 @@ export function OrderForm({ initial, onSubmit, onCancel, sources }: Props) {
         status: initial.status,
         priority: initial.priority,
       });
+      const parsed = parseItemsAgainstCatalog(initial.items, products);
+      setSelected(parsed.selected);
+      setItemsNote(parsed.note);
     } else {
       setValues(empty);
+      setSelected([]);
+      setItemsNote('');
     }
-  }, [initial]);
+  }, [initial, products]);
 
   function set<K extends keyof OrderFormValues>(key: K, val: OrderFormValues[K]) {
     setValues((v) => ({ ...v, [key]: val }));
+  }
+
+  function toggleProduct(name: string) {
+    setSelected((prev) =>
+      prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name],
+    );
+  }
+
+  function orderedSelected(): string[] {
+    const names = products.map((p) => p.name);
+    const ordered = names.filter((n) => selected.includes(n));
+    const extras = selected.filter((n) => !names.includes(n));
+    return [...ordered, ...extras];
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -59,10 +91,11 @@ export function OrderForm({ initial, onSubmit, onCancel, sources }: Props) {
       window.alert('이름을 입력해 주세요.');
       return;
     }
+    const items = joinItems(orderedSelected(), itemsNote);
     onSubmit({
       ...values,
       name: values.name.trim(),
-      items: values.items.trim(),
+      items,
       address: values.address.trim(),
       phone: values.phone.replace(/[-\s]/g, '').trim(),
       group: values.group.trim(),
@@ -84,15 +117,57 @@ export function OrderForm({ initial, onSubmit, onCancel, sources }: Props) {
         />
       </label>
 
-      <label className="field">
-        <span>주문 내용</span>
-        <textarea
-          value={values.items}
-          onChange={(e) => set('items', e.target.value)}
-          placeholder="사이드미러 커버 실버 1개"
-          rows={2}
-        />
-      </label>
+      <fieldset className="field product-field">
+        <legend>주문 내용</legend>
+        <div className="product-chip-row" role="group" aria-label="제품 선택">
+          {products.map((product) => {
+            const active = selected.includes(product.name);
+            const c = product.color;
+            return (
+              <button
+                key={product.name}
+                type="button"
+                className={`product-chip ${active ? 'active' : ''}`}
+                aria-pressed={active}
+                onClick={() => toggleProduct(product.name)}
+                style={
+                  active
+                    ? {
+                        background: c.bg,
+                        borderColor: c.border,
+                        color: c.text,
+                      }
+                    : {
+                        borderColor: c.border,
+                        color: c.text,
+                      }
+                }
+              >
+                {product.name}
+              </button>
+            );
+          })}
+        </div>
+        {products.length === 0 && (
+          <p className="hint">
+            제품 목록이 비어 있습니다. 「제품 관리」에서 추가하세요.
+          </p>
+        )}
+        <label className="field product-note-field">
+          <span>추가 메모 (선택)</span>
+          <textarea
+            value={itemsNote}
+            onChange={(e) => setItemsNote(e.target.value)}
+            placeholder="목록에 없는 내용 · 수량 · 색상 등"
+            rows={2}
+          />
+        </label>
+        {(selected.length > 0 || itemsNote.trim()) && (
+          <p className="product-preview hint">
+            미리보기: {joinItems(orderedSelected(), itemsNote)}
+          </p>
+        )}
+      </fieldset>
 
       <label className="field">
         <span>받을 주소</span>
@@ -119,7 +194,11 @@ export function OrderForm({ initial, onSubmit, onCancel, sources }: Props) {
 
       <fieldset className="field source-field">
         <legend>주문 경로</legend>
-        <SourcePicker value={values.group} onChange={(v) => set('group', v)} sources={sources} />
+        <SourcePicker
+          value={values.group}
+          onChange={(v) => set('group', v)}
+          sources={sources}
+        />
       </fieldset>
 
       <fieldset className="field">
