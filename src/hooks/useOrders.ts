@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Order, OrderStatus, StatusFilter } from '../types';
+import type { SourceFilter } from '../sources';
 import { loadOrders, saveOrders } from '../storage';
 
 function uid(): string {
@@ -80,6 +81,7 @@ export function useOrders() {
 export function useFilteredOrders(
   orders: Order[],
   statusFilter: StatusFilter,
+  sourceFilter: SourceFilter,
   query: string,
 ) {
   return useMemo(() => {
@@ -87,14 +89,19 @@ export function useFilteredOrders(
     return orders
       .filter((o) => (statusFilter === '전체' ? true : o.status === statusFilter))
       .filter((o) => {
+        if (sourceFilter === '전체') return true;
+        return (o.group || '').trim() === sourceFilter;
+      })
+      .filter((o) => {
         if (!q) return true;
         const name = o.name.toLowerCase();
         const phone = o.phone.replace(/[-\s]/g, '').toLowerCase();
-        return name.includes(q) || phone.includes(q);
+        const group = (o.group || '').toLowerCase();
+        return name.includes(q) || phone.includes(q) || group.includes(q);
       })
       .sort((a, b) => {
         if (a.priority !== b.priority) return a.priority ? -1 : 1;
         return b.updatedAt - a.updatedAt;
       });
-  }, [orders, statusFilter, query]);
+  }, [orders, statusFilter, sourceFilter, query]);
 }
