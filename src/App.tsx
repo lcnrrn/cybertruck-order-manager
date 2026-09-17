@@ -1,22 +1,41 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Order, StatusFilter } from './types';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
+import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
 import { StatusFilterBar } from './components/StatusFilter';
 import { Toast } from './components/Toast';
+import { GoogleSyncBar } from './components/GoogleSyncBar';
+import { GoogleSettings } from './components/GoogleSettings';
+import { hasGoogleConfig } from './google/config';
 
-type Sheet = 'none' | 'form' | 'import';
+type Sheet = 'none' | 'form' | 'import' | 'google';
 
 export default function App() {
-  const { orders, addOrder, updateOrder, deleteOrder, setStatus, importOrders } =
-    useOrders();
+  const {
+    orders,
+    replaceOrders,
+    addOrder,
+    updateOrder,
+    deleteOrder,
+    setStatus,
+    importOrders,
+  } = useOrders();
   const [filter, setFilter] = useState<StatusFilter>('전체');
   const [query, setQuery] = useState('');
   const [sheet, setSheet] = useState<Sheet>('none');
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => setToast(msg), []);
+
+  const google = useGoogleSync({
+    orders,
+    replaceOrders,
+    onToast: showToast,
+  });
 
   const filtered = useFilteredOrders(orders, filter, query);
 
@@ -29,8 +48,6 @@ export default function App() {
     return c;
   }, [orders]);
 
-  const showToast = useCallback((msg: string) => setToast(msg), []);
-
   const handleCopy = useCallback(
     async (order: Order) => {
       const text = `${order.address}\n${order.phone}`;
@@ -38,7 +55,6 @@ export default function App() {
         await navigator.clipboard.writeText(text);
         showToast('복사됨');
       } catch {
-        // fallback
         const ta = document.createElement('textarea');
         ta.value = text;
         ta.style.position = 'fixed';
@@ -99,6 +115,15 @@ export default function App() {
     return importOrders(partials);
   }
 
+  function handleConnectClick() {
+    if (!hasGoogleConfig()) {
+      setSheet('google');
+      showToast('먼저 Client ID와 Sheet ID를 입력해 주세요.');
+      return;
+    }
+    void google.connect();
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -115,6 +140,16 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      <GoogleSyncBar
+        connected={google.connected}
+        email={google.email}
+        status={google.status}
+        onConnect={handleConnectClick}
+        onSync={() => void google.syncNow()}
+        onDisconnect={google.disconnect}
+        onOpenSettings={() => setSheet('google')}
+      />
 
       <div className="toolbar">
         <input
@@ -176,6 +211,23 @@ export default function App() {
             )}
             {sheet === 'import' && (
               <ImportModal onImport={handleImport} onClose={() => setSheet('none')} />
+            )}
+            {sheet === 'google' && (
+              <div className="sheet-body">
+                <GoogleSettings
+                  onClose={() => setSheet('none')}
+                  onSaved={() => {
+                    google.refreshConfigured();
+                    showToast('설정 저장됨');
+                    setSheet('none');
+                  }}
+                  onConnect={() => {
+                    google.refreshConfigured();
+                    setSheet('none');
+                    void google.connect();
+                  }}
+                />
+              </div>
             )}
           </div>
         </div>
