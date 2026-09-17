@@ -1,4 +1,5 @@
 import type { SourceFilter } from '../sources';
+import { getSourceColor } from '../sources';
 
 interface Props {
   options: string[];
@@ -9,18 +10,33 @@ interface Props {
 export function SourceFilterBar({ options, value, onChange }: Props) {
   return (
     <div className="filter-bar source-filter-bar" role="tablist" aria-label="주문 경로 필터">
-      {options.map((opt) => (
-        <button
-          key={opt}
-          type="button"
-          role="tab"
-          aria-selected={value === opt}
-          className={`filter-chip source-filter-chip${value === opt ? ' active' : ''}`}
-          onClick={() => onChange(opt)}
-        >
-          {opt === '전체' ? '경로 전체' : opt}
-        </button>
-      ))}
+      {options.map((opt) => {
+        const active = value === opt;
+        const isAll = opt === '전체';
+        const c = isAll ? null : getSourceColor(opt);
+        return (
+          <button
+            key={opt}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            className={`filter-chip source-filter-chip${active ? ' active' : ''}`}
+            style={
+              c
+                ? {
+                    background: active ? c.bg : 'var(--bg-elevated)',
+                    borderColor: active ? c.border : c.border,
+                    color: active ? c.text : c.text,
+                    opacity: active ? 1 : 0.75,
+                  }
+                : undefined
+            }
+            onClick={() => onChange(opt)}
+          >
+            {isAll ? '경로 전체' : opt}
+          </button>
+        );
+      })}
     </div>
   );
 }
