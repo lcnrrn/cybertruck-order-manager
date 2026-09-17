@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
+import type { Product } from '../products';
+import { ProductBadges } from './ProductBadges';
 import { SMS_TEMPLATES, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 
 interface Props {
   orders: Order[];
+  products: Product[];
   onEdit: (order: Order) => void;
   onDelete: (id: string) => void;
   onStatus: (id: string, status: OrderStatus) => void;
@@ -15,6 +18,7 @@ interface Props {
 
 export function OrderTable({
   orders,
+  products,
   onEdit,
   onDelete,
   onStatus,
@@ -99,7 +103,11 @@ export function OrderTable({
                     onClick={() => longItems && toggleItems(order.id)}
                     title={longItems ? (itemsExpanded ? '접기' : '펼치기') : undefined}
                   >
-                    {itemsText}
+                    {order.items ? (
+                      <ProductBadges items={order.items} products={products} />
+                    ) : (
+                      '—'
+                    )}
                   </button>
                 </td>
                 <td className="col-address">
