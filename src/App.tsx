@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Order, StatusFilter } from './types';
 import type { SourceFilter } from './sources';
 import { buildSourceFilterOptions } from './sources';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
+import { OrderTable } from './components/OrderTable';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
 import { StatusFilterBar } from './components/StatusFilter';
@@ -15,6 +16,19 @@ import { GoogleSettings } from './components/GoogleSettings';
 import { hasGoogleConfig } from './google/config';
 
 type Sheet = 'none' | 'form' | 'import' | 'google';
+type ListView = 'table' | 'card';
+
+const VIEW_STORAGE_KEY = 'cybertruck-list-view';
+
+function loadView(): ListView {
+  try {
+    const v = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (v === 'card' || v === 'table') return v;
+  } catch {
+    /* ignore */
+  }
+  return 'table';
+}
 
 export default function App() {
   const {
@@ -32,6 +46,15 @@ export default function App() {
   const [sheet, setSheet] = useState<Sheet>('none');
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [listView, setListView] = useState<ListView>(loadView);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, listView);
+    } catch {
+      /* ignore */
+    }
+  }, [listView]);
 
   const showToast = useCallback((msg: string) => setToast(msg), []);
 
@@ -133,8 +156,19 @@ export default function App() {
     void google.connect();
   }
 
+  const sharedCardProps = {
+    onEdit: openEdit,
+    onDelete: deleteOrder,
+    onStatus: setStatus,
+    copyText,
+    onTogglePriority: (id: string) => {
+      const target = orders.find((x) => x.id === id);
+      if (target) updateOrder(id, { priority: !target.priority });
+    },
+  };
+
   return (
-    <div className="app">
+    <div className={`app ${listView === 'table' ? 'view-table' : 'view-card'}`}>
       <header className="app-header">
         <div>
           <p className="eyebrow">Cybertruck · 3D Print</p>
@@ -161,14 +195,34 @@ export default function App() {
       />
 
       <div className="toolbar">
-        <input
-          className="search-input"
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="이름 · 연락처 · 주문 경로 검색"
-          enterKeyHint="search"
-        />
+        <div className="toolbar-row">
+          <input
+            className="search-input"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="이름 · 연락처 · 주문 경로 검색"
+            enterKeyHint="search"
+          />
+          <div className="view-toggle" role="group" aria-label="보기 전환">
+            <button
+              type="button"
+              className={`view-toggle-btn ${listView === 'table' ? 'active' : ''}`}
+              onClick={() => setListView('table')}
+              aria-pressed={listView === 'table'}
+            >
+              표
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn ${listView === 'card' ? 'active' : ''}`}
+              onClick={() => setListView('card')}
+              aria-pressed={listView === 'card'}
+            >
+              카드
+            </button>
+          </div>
+        </div>
         <StatusFilterBar value={filter} counts={counts} onChange={setFilter} />
         <SourceFilterBar
           options={sourceOptions}
@@ -177,7 +231,7 @@ export default function App() {
         />
       </div>
 
-      <main className="order-list">
+      <main className={listView === 'table' ? 'order-list-table' : 'order-list'}>
         {filtered.length === 0 ? (
           <div className="empty">
             <p>주문이 없습니다.</p>
@@ -185,21 +239,10 @@ export default function App() {
               첫 주문 추가
             </button>
           </div>
+        ) : listView === 'table' ? (
+          <OrderTable orders={filtered} {...sharedCardProps} />
         ) : (
-          filtered.map((o) => (
-            <OrderCard
-              key={o.id}
-              order={o}
-              onEdit={openEdit}
-              onDelete={deleteOrder}
-              onStatus={setStatus}
-              copyText={copyText}
-              onTogglePriority={(id) => {
-                const target = orders.find((x) => x.id === id);
-                if (target) updateOrder(id, { priority: !target.priority });
-              }}
-            />
-          ))
+          filtered.map((o) => <OrderCard key={o.id} order={o} {...sharedCardProps} />)
         )}
       </main>
 
