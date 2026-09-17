@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import { SMS_TEMPLATES, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { getSourceColor } from '../sources';
 
 interface Props {
   orders: Order[];
@@ -74,7 +75,16 @@ export function OrderTable({
               >
                 <td className="col-sticky col-group">
                   {order.group ? (
-                    <span className="table-source-badge">{order.group}</span>
+                    <span
+                      className="table-source-badge"
+                      style={{
+                        background: getSourceColor(order.group).bg,
+                        borderColor: getSourceColor(order.group).border,
+                        color: getSourceColor(order.group).text,
+                      }}
+                    >
+                      {order.group}
+                    </span>
                   ) : (
                     <span className="table-muted">—</span>
                   )}
