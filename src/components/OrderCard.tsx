@@ -1,10 +1,13 @@
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
+import type { Product } from '../products';
+import { ProductBadges } from './ProductBadges';
 import { SMS_TEMPLATES, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 
 interface Props {
   order: Order;
+  products: Product[];
   onEdit: (order: Order) => void;
   onDelete: (id: string) => void;
   onStatus: (id: string, status: OrderStatus) => void;
@@ -14,6 +17,7 @@ interface Props {
 
 export function OrderCard({
   order,
+  products,
   onEdit,
   onDelete,
   onStatus,
@@ -52,7 +56,7 @@ export function OrderCard({
       </header>
 
       <div className="order-body">
-        <p className="order-items">{order.items || '주문 내용 없음'}</p>
+        <div className="order-items"><ProductBadges items={order.items} products={products} /></div>
         <p className="order-address">{order.address || '주소 없음'}</p>
         <p className="order-phone">{formatPhoneDisplay(order.phone) || '연락처 없음'}</p>
       </div>
