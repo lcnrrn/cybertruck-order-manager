@@ -13,6 +13,10 @@ export function useOrders() {
     saveOrders(orders);
   }, [orders]);
 
+  const replaceOrders = useCallback((next: Order[]) => {
+    setOrders(next);
+  }, []);
+
   const addOrder = useCallback((data: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = Date.now();
     const order: Order = {
@@ -64,6 +68,7 @@ export function useOrders() {
 
   return {
     orders,
+    replaceOrders,
     addOrder,
     updateOrder,
     deleteOrder,

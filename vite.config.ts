@@ -14,7 +14,7 @@ export default defineConfig({
       manifest: {
         name: '사이버트럭 주문 관리',
         short_name: '주문관리',
-        description: '3D 프린트 Cybertruck 악세서리 주문 관리 (로컬 저장)',
+        description: '3D 프린트 Cybertruck 악세서리 주문 관리 (localStorage · Google Sheets 동기화)',
         theme_color: '#0b0d10',
         background_color: '#0b0d10',
         display: 'standalone',
