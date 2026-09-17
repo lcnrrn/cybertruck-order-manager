@@ -666,9 +666,8 @@ a {
 }
 
 .source-chip.active {
-  background: #0c4a6e;
-  border-color: var(--accent-strong);
-  color: var(--text);
+  /* color via inline style from getSourceColor */
+  font-weight: 700;
 }
 
 .source-custom-input {
@@ -694,9 +693,82 @@ a {
 }
 
 .order-source-badge {
-  background: #0c4a6e;
-  color: #e0f2fe;
-  border: 1px solid #0284c7;
+  /* color via inline style from getSourceColor */
+  border: 1px solid transparent;
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+/* —— 경로 관리 —— */
+.source-manager-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.source-manager-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.source-manager-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid;
+  flex: 0 0 auto;
+}
+
+.source-manager-name {
+  flex: 1 1 80px;
+  font-weight: 600;
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-manager-rename {
+  flex: 1 1 120px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--accent-strong);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.source-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.source-mgr-btn {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.source-manager-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.source-manager-add .source-custom-input {
+  flex: 1;
 }
