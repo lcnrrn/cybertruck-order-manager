@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Order, StatusFilter } from './types';
 import type { SourceFilter } from './sources';
 import { buildSourceFilterOptions, getSources, setSources } from './sources';
+import { getProducts, setProducts, type Product } from './products';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
@@ -14,9 +15,10 @@ import { Toast } from './components/Toast';
 import { GoogleSyncBar } from './components/GoogleSyncBar';
 import { GoogleSettings } from './components/GoogleSettings';
 import { SourceManager } from './components/SourceManager';
+import { ProductManager } from './components/ProductManager';
 import { hasGoogleConfig } from './google/config';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources';
+type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products';
 type ListView = 'table' | 'card';
 
 const VIEW_STORAGE_KEY = 'cybertruck-list-view';
@@ -50,6 +52,7 @@ export default function App() {
   const [listView, setListView] = useState<ListView>(loadView);
 
   const [sources, setSourcesState] = useState<string[]>(() => getSources());
+  const [products, setProductsState] = useState<Product[]>(() => getProducts());
 
   useEffect(() => {
     try {
@@ -64,6 +67,11 @@ export default function App() {
   const handleSourcesChange = useCallback((next: string[]) => {
     setSources(next);
     setSourcesState(next);
+  }, []);
+
+  const handleProductsChange = useCallback((next: Product[]) => {
+    setProducts(next);
+    setProductsState(next);
   }, []);
 
   const google = useGoogleSync({
@@ -189,6 +197,9 @@ export default function App() {
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('sources')}>
             경로 관리
           </button>
+          <button type="button" className="btn btn-ghost" onClick={() => setSheet('products')}>
+            제품 관리
+          </button>
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('import')}>
             가져오기
           </button>
@@ -254,9 +265,9 @@ export default function App() {
             </button>
           </div>
         ) : listView === 'table' ? (
-          <OrderTable orders={filtered} {...sharedCardProps} />
+          <OrderTable orders={filtered} products={products} {...sharedCardProps} />
         ) : (
-          filtered.map((o) => <OrderCard key={o.id} order={o} {...sharedCardProps} />)
+          filtered.map((o) => <OrderCard key={o.id} order={o} products={products} {...sharedCardProps} />)
         )}
       </main>
 
@@ -273,6 +284,7 @@ export default function App() {
                 <OrderForm
                   initial={editing}
                   sources={sources}
+                  products={products}
                   onSubmit={handleFormSubmit}
                   onCancel={() => {
                     setSheet('none');
@@ -305,6 +317,13 @@ export default function App() {
               <SourceManager
                 sources={sources}
                 onChange={handleSourcesChange}
+                onClose={() => setSheet('none')}
+              />
+            )}
+            {sheet === 'products' && (
+              <ProductManager
+                products={products}
+                onChange={handleProductsChange}
                 onClose={() => setSheet('none')}
               />
             )}
