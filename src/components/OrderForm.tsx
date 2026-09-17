@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
+import { SourcePicker } from './SourcePicker';
 
 export type OrderFormValues = {
   name: string;
@@ -115,14 +116,10 @@ export function OrderForm({ initial, onSubmit, onCancel }: Props) {
         />
       </label>
 
-      <label className="field">
-        <span>그룹 / 유입 (선택)</span>
-        <input
-          value={values.group}
-          onChange={(e) => set('group', e.target.value)}
-          placeholder="스마트스토어, 인스타…"
-        />
-      </label>
+      <fieldset className="field source-field">
+        <legend>주문 경로</legend>
+        <SourcePicker value={values.group} onChange={(v) => set('group', v)} />
+      </fieldset>
 
       <fieldset className="field">
         <legend>상태</legend>

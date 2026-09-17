@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Order } from '../types';
 import { parseNaverFormFile, parseReminderText } from '../parseImport';
+import { applyOrderSource } from '../sources';
+import { SourcePicker } from './SourcePicker';
 
 type Tab = 'naver' | 'reminders';
 
@@ -16,9 +18,25 @@ export function ImportModal({ onImport, onClose }: Props) {
   const [fileOrders, setFileOrders] = useState<Partial<Order>[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
+  /** 주문 경로 — Naver defaults to 네이버 폼; Reminders starts empty (required). */
+  const [source, setSource] = useState('네이버 폼');
 
   const reminderPreview = useMemo(() => parseReminderText(text), [text]);
-  const preview = tab === 'naver' ? fileOrders : reminderPreview;
+  const rawPreview = tab === 'naver' ? fileOrders : reminderPreview;
+  const preview = useMemo(
+    () => (source.trim() ? applyOrderSource(rawPreview, source.trim()) : rawPreview),
+    [rawPreview, source],
+  );
+
+  function switchTab(next: Tab) {
+    setTab(next);
+    if (next === 'naver') {
+      setSource((s) => (s.trim() ? s : '네이버 폼'));
+    } else {
+      // Reminders: clear default so user must pick
+      setSource((s) => (s === '네이버 폼' ? '' : s));
+    }
+  }
 
   async function handleFile(file: File | null) {
     setFileError(null);
@@ -52,8 +70,12 @@ export function ImportModal({ onImport, onClose }: Props) {
       );
       return;
     }
-    const n = onImport(preview);
-    window.alert(`${n}건을 가져왔습니다.`);
+    if (!source.trim()) {
+      window.alert('주문 경로를 선택하거나 입력해 주세요.');
+      return;
+    }
+    const n = onImport(applyOrderSource(rawPreview, source.trim()));
+    window.alert(`${n}건을 가져왔습니다. (${source.trim()})`);
     onClose();
   }
 
@@ -67,7 +89,7 @@ export function ImportModal({ onImport, onClose }: Props) {
           role="tab"
           aria-selected={tab === 'naver'}
           className={`import-tab${tab === 'naver' ? ' active' : ''}`}
-          onClick={() => setTab('naver')}
+          onClick={() => switchTab('naver')}
         >
           네이버 폼 Excel
         </button>
@@ -76,11 +98,22 @@ export function ImportModal({ onImport, onClose }: Props) {
           role="tab"
           aria-selected={tab === 'reminders'}
           className={`import-tab${tab === 'reminders' ? ' active' : ''}`}
-          onClick={() => setTab('reminders')}
+          onClick={() => switchTab('reminders')}
         >
           리마인더 붙여넣기
         </button>
       </div>
+
+      <fieldset className="field source-field">
+        <legend>
+          주문 경로 {tab === 'reminders' ? '*' : ''}
+        </legend>
+        <SourcePicker
+          value={source}
+          onChange={setSource}
+          required={tab === 'reminders'}
+        />
+      </fieldset>
 
       {tab === 'naver' ? (
         <>
@@ -124,11 +157,15 @@ export function ImportModal({ onImport, onClose }: Props) {
 
       {preview.length > 0 && (
         <div className="import-preview">
-          <strong>미리보기 {preview.length}건</strong>
+          <strong>
+            미리보기 {preview.length}건
+            {source.trim() ? ` · ${source.trim()}` : ''}
+          </strong>
           <ul>
             {preview.slice(0, 5).map((p, i) => (
               <li key={i}>
                 {p.name} · {p.items || '(내용없음)'} · {p.phone || '(번호없음)'}
+                {p.group ? ` · [${p.group}]` : ''}
               </li>
             ))}
             {preview.length > 5 && <li>…외 {preview.length - 5}건</li>}
@@ -144,7 +181,7 @@ export function ImportModal({ onImport, onClose }: Props) {
           type="button"
           className="btn btn-primary"
           onClick={handleImport}
-          disabled={parsing || preview.length === 0}
+          disabled={parsing || preview.length === 0 || !source.trim()}
         >
           {preview.length > 0 ? `${preview.length}건 가져오기` : '가져오기'}
         </button>

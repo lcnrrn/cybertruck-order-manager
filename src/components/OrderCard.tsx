@@ -35,7 +35,11 @@ export function OrderCard({
             {order.priority ? '★' : '☆'}
           </button>
         </div>
-        {order.group ? <span className="order-group">{order.group}</span> : null}
+        {order.group ? (
+          <span className="order-group order-source-badge" title="주문 경로">
+            {order.group}
+          </span>
+        ) : null}
       </header>
 
       <div className="order-body">
