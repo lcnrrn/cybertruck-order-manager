@@ -9,17 +9,18 @@ type Tab = 'naver' | 'reminders';
 interface Props {
   onImport: (partials: Partial<Order>[]) => number;
   onClose: () => void;
+  sources: string[];
 }
 
-export function ImportModal({ onImport, onClose }: Props) {
+export function ImportModal({ onImport, onClose, sources }: Props) {
   const [tab, setTab] = useState<Tab>('naver');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
   const [fileOrders, setFileOrders] = useState<Partial<Order>[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
-  /** 주문 경로 — Naver defaults to 네이버 폼; Reminders starts empty (required). */
-  const [source, setSource] = useState('네이버 폼');
+  /** Default 기타 (or empty); user must pick — no longer 네이버 폼. */
+  const [source, setSource] = useState('기타');
 
   const reminderPreview = useMemo(() => parseReminderText(text), [text]);
   const rawPreview = tab === 'naver' ? fileOrders : reminderPreview;
@@ -30,12 +31,6 @@ export function ImportModal({ onImport, onClose }: Props) {
 
   function switchTab(next: Tab) {
     setTab(next);
-    if (next === 'naver') {
-      setSource((s) => (s.trim() ? s : '네이버 폼'));
-    } else {
-      // Reminders: clear default so user must pick
-      setSource((s) => (s === '네이버 폼' ? '' : s));
-    }
   }
 
   async function handleFile(file: File | null) {
@@ -105,13 +100,12 @@ export function ImportModal({ onImport, onClose }: Props) {
       </div>
 
       <fieldset className="field source-field">
-        <legend>
-          주문 경로 {tab === 'reminders' ? '*' : ''}
-        </legend>
+        <legend>주문 경로 *</legend>
         <SourcePicker
           value={source}
           onChange={setSource}
-          required={tab === 'reminders'}
+          sources={sources}
+          required
         />
       </fieldset>
 
