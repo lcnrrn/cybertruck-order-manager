@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Order, StatusFilter } from './types';
 import type { SourceFilter } from './sources';
-import { buildSourceFilterOptions } from './sources';
+import { buildSourceFilterOptions, getSources, setSources } from './sources';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
@@ -13,9 +13,10 @@ import { SourceFilterBar } from './components/SourceFilter';
 import { Toast } from './components/Toast';
 import { GoogleSyncBar } from './components/GoogleSyncBar';
 import { GoogleSettings } from './components/GoogleSettings';
+import { SourceManager } from './components/SourceManager';
 import { hasGoogleConfig } from './google/config';
 
-type Sheet = 'none' | 'form' | 'import' | 'google';
+type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources';
 type ListView = 'table' | 'card';
 
 const VIEW_STORAGE_KEY = 'cybertruck-list-view';
@@ -48,6 +49,8 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [listView, setListView] = useState<ListView>(loadView);
 
+  const [sources, setSourcesState] = useState<string[]>(() => getSources());
+
   useEffect(() => {
     try {
       localStorage.setItem(VIEW_STORAGE_KEY, listView);
@@ -57,6 +60,11 @@ export default function App() {
   }, [listView]);
 
   const showToast = useCallback((msg: string) => setToast(msg), []);
+
+  const handleSourcesChange = useCallback((next: string[]) => {
+    setSources(next);
+    setSourcesState(next);
+  }, []);
 
   const google = useGoogleSync({
     orders,
@@ -75,7 +83,10 @@ export default function App() {
     return c;
   }, [orders]);
 
-  const sourceOptions = useMemo(() => buildSourceFilterOptions(orders), [orders]);
+  const sourceOptions = useMemo(
+    () => buildSourceFilterOptions(orders, sources),
+    [orders, sources],
+  );
 
   const copyText = useCallback(
     async (text: string, okMessage: string) => {
@@ -175,6 +186,9 @@ export default function App() {
           <h1>주문 관리</h1>
         </div>
         <div className="header-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => setSheet('sources')}>
+            경로 관리
+          </button>
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('import')}>
             가져오기
           </button>
@@ -258,6 +272,7 @@ export default function App() {
               <div className="sheet-body">
                 <OrderForm
                   initial={editing}
+                  sources={sources}
                   onSubmit={handleFormSubmit}
                   onCancel={() => {
                     setSheet('none');
@@ -267,7 +282,7 @@ export default function App() {
               </div>
             )}
             {sheet === 'import' && (
-              <ImportModal onImport={handleImport} onClose={() => setSheet('none')} />
+              <ImportModal onImport={handleImport} onClose={() => setSheet('none')} sources={sources} />
             )}
             {sheet === 'google' && (
               <div className="sheet-body">
@@ -285,6 +300,13 @@ export default function App() {
                   }}
                 />
               </div>
+            )}
+            {sheet === 'sources' && (
+              <SourceManager
+                sources={sources}
+                onChange={handleSourcesChange}
+                onClose={() => setSheet('none')}
+              />
             )}
           </div>
         </div>
