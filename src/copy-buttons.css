@@ -1,0 +1,32 @@
+/* OrderCard copy-row buttons */
+.copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-copy {
+  flex: 1 1 auto;
+  min-width: 72px;
+  min-height: var(--tap);
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.btn-copy-post {
+  flex: 1 1 100%;
+  background: #0c4a6e;
+  border-color: var(--accent-strong);
+  color: #e0f2fe;
+}
+
+@media (min-width: 400px) {
+  .btn-copy-post {
+    flex: 1 1 auto;
+  }
+}
