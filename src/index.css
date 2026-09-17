@@ -567,3 +567,51 @@ a {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* Google Sheets sync */
+.google-sync-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.google-connect-btn {
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+
+.google-email {
+  flex: 1 1 120px;
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.btn-compact {
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.google-settings-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+.google-settings-actions .btn-primary {
+  grid-column: 1 / -1;
+}
+
+.google-settings code {
+  font-size: 12px;
+  color: var(--accent);
+  word-break: break-all;
+}
