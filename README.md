@@ -9,6 +9,7 @@ Apple 미리알림의 한 줄 메모를 대체하며, 데이터는 브라우저 
 - 추가 / 수정 / 삭제 · 우선순위 표시
 - **주소 + 연락처 한 번에 복사** (우체국 택배 붙여넣기용, 두 줄) → 「복사됨」 토스트
 - **문자(SMS)** `sms:` 링크 · 「제작 완료」「발송 안내」 짧은 한국어 템플릿
+- **네이버 폼 Excel(.xlsx)/CSV 가져오기** (설문 답변 컬럼 자동 매핑)
 - 미리알림 스타일 **붙여넣기 가져오기** (best-effort 파싱)
 - PWA: iPhone 홈 화면 추가 가능 · 다크 테마 · 큰 터치 영역
 
@@ -55,7 +56,7 @@ npm run build
 npx gh-pages -d dist
 ```
 
-or Actions로 `npm ci && npm run build` 후 `actions/deploy-pages`로 `dist`를 배포합니다.
+또는 Actions로 `npm ci && npm run build` 후 `actions/deploy-pages`로 `dist`를 배포합니다.
 
 배포 URL 예: `https://lcnrrn.github.io/cybertruck-order-manager/`
 
@@ -72,6 +73,17 @@ or Actions로 `npm ci && npm run build` 후 `actions/deploy-pages`로 `dist`를 
 3. 이름 확인 후 추가 → 앱처럼 전체 화면으로 실행됩니다
 
 > 데이터는 **기기·브라우저마다** 따로 저장됩니다. 기기 변경·캐시 삭제 시 주문이 사라질 수 있으니, 중요하면 붙여넣기 내보내기(복사)로 백업하세요.
+
+
+## 네이버 폼 Excel 가져오기
+
+1. 앱 상단 **가져오기** → **네이버 폼 Excel** 탭
+2. 네이버 폼 설문 답변 내보내기 `.xlsx`(또는 `.csv`) 선택
+3. 미리보기 건수 확인 후 **가져오기**
+
+매핑: `성 함(*)`→이름, `카페 닉네임(*)`→그룹(+이름 접두), `연락처(*)`→전화, `주 소(*)`→주소,
+옵션 열(거치대·클립·MAT 등)과 `택배비용(*)`·요청 메모 → `items` (` / ` 구분). 상태 기본값 `대기`.
+실제 고객 PII는 샘플 시드에 넣지 않습니다.
 
 ## 미리알림 붙여넣기 형식 예시
 
