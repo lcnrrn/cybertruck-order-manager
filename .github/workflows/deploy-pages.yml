@@ -1,8 +1,7 @@
 name: Deploy to GitHub Pages
 
+# Manual only — disabled automatic runs so failed deploys do not email on every push.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -25,10 +24,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
 
       - name: Install
-        run: npm ci
+        run: npm install
 
       - name: Build
         run: npm run build
