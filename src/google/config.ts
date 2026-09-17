@@ -17,6 +17,11 @@ export const ORDERS_HEADERS = [
   'createdAt',
 ] as const;
 
+/** Built-in defaults for this user's deployment (public OAuth client id + their sheet). */
+const DEFAULT_CLIENT_ID =
+  '489719252286-lol6b863pne0iahgbhf8j2lng6ovfiv1.apps.googleusercontent.com';
+const DEFAULT_SHEET_ID = '18kxOtN0qRsfExLJeYWRDJeO3w4WeloygIkjrJ6orCP0';
+
 export function getClientId(): string {
   try {
     const fromLs = localStorage.getItem(LS_CLIENT_ID)?.trim();
@@ -24,7 +29,7 @@ export function getClientId(): string {
   } catch {
     /* ignore */
   }
-  return (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  return (import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_CLIENT_ID).trim();
 }
 
 export function getSheetId(): string {
@@ -34,7 +39,7 @@ export function getSheetId(): string {
   } catch {
     /* ignore */
   }
-  return (import.meta.env.VITE_GOOGLE_SHEET_ID || '').trim();
+  return (import.meta.env.VITE_GOOGLE_SHEET_ID || DEFAULT_SHEET_ID).trim();
 }
 
 export function setClientIdOverride(value: string): void {
