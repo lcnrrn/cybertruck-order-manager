@@ -15,9 +15,9 @@ export const ORDERS_HEADERS = [
   'priority',
   'updatedAt',
   'createdAt',
+  'trackingNumber',
 ] as const;
 
-/** Built-in defaults for this user's deployment (public OAuth client id + their sheet). */
 const DEFAULT_CLIENT_ID =
   '489719252286-lol6b863pne0iahgbhf8j2lng6ovfiv1.apps.googleusercontent.com';
 const DEFAULT_SHEET_ID = '18kxOtN0qRsfExLJeYWRDJeO3w4WeloygIkjrJ6orCP0';
