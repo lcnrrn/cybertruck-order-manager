@@ -49,6 +49,21 @@ export function useOrders() {
     [updateOrder],
   );
 
+  const applyTracking = useCallback(
+    (updates: { id: string; trackingNumber: string }[]) => {
+      const map = new Map(updates.map((u) => [u.id, u.trackingNumber]));
+      setOrders((prev) =>
+        prev.map((o) => {
+          const t = map.get(o.id);
+          if (!t) return o;
+          return { ...o, trackingNumber: t, updatedAt: Date.now() };
+        }),
+      );
+      return updates.length;
+    },
+    [],
+  );
+
   const importOrders = useCallback((partials: Partial<Order>[]) => {
     const now = Date.now();
     const created: Order[] = partials.map((p, i) => ({
@@ -60,6 +75,7 @@ export function useOrders() {
       group: p.group,
       status: p.status || '대기',
       priority: p.priority ?? false,
+      trackingNumber: p.trackingNumber,
       createdAt: now + i,
       updatedAt: now + i,
     }));
@@ -75,6 +91,7 @@ export function useOrders() {
     deleteOrder,
     setStatus,
     importOrders,
+    applyTracking,
   };
 }
 
@@ -97,7 +114,13 @@ export function useFilteredOrders(
         const name = o.name.toLowerCase();
         const phone = o.phone.replace(/[-\s]/g, '').toLowerCase();
         const group = (o.group || '').toLowerCase();
-        return name.includes(q) || phone.includes(q) || group.includes(q);
+        const tracking = (o.trackingNumber || '').toLowerCase();
+        return (
+          name.includes(q) ||
+          phone.includes(q) ||
+          group.includes(q) ||
+          tracking.includes(q)
+        );
       })
       .sort((a, b) => {
         if (a.priority !== b.priority) return a.priority ? -1 : 1;
