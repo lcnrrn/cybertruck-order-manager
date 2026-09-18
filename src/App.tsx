@@ -9,6 +9,7 @@ import { OrderCard } from './components/OrderCard';
 import { OrderTable } from './components/OrderTable';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
+import { TrackingModal } from './components/TrackingModal';
 import { StatusFilterBar } from './components/StatusFilter';
 import { SourceFilterBar } from './components/SourceFilter';
 import { Toast } from './components/Toast';
@@ -18,7 +19,7 @@ import { SourceManager } from './components/SourceManager';
 import { ProductManager } from './components/ProductManager';
 import { hasGoogleConfig } from './google/config';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products';
+type Sheet = 'none' | 'form' | 'import' | 'tracking' | 'google' | 'sources' | 'products';
 type ListView = 'table' | 'card';
 
 const VIEW_STORAGE_KEY = 'cybertruck-list-view';
@@ -42,6 +43,7 @@ export default function App() {
     deleteOrder,
     setStatus,
     importOrders,
+    applyTracking,
   } = useOrders();
   const [filter, setFilter] = useState<StatusFilter>('전체');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('전체');
@@ -144,6 +146,7 @@ export default function App() {
         group: values.group || undefined,
         status: values.status,
         priority: values.priority,
+        trackingNumber: values.trackingNumber || undefined,
       });
       showToast('저장됨');
     } else {
@@ -155,6 +158,7 @@ export default function App() {
         group: values.group || undefined,
         status: values.status,
         priority: values.priority,
+        trackingNumber: values.trackingNumber || undefined,
       });
       showToast('추가됨');
     }
@@ -200,6 +204,9 @@ export default function App() {
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('products')}>
             제품 관리
           </button>
+          <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}>
+            송장등록
+          </button>
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('import')}>
             가져오기
           </button>
@@ -226,7 +233,7 @@ export default function App() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="이름 · 연락처 · 주문 경로 검색"
+            placeholder="이름 · 연락처 · 경로 · 송장 검색"
             enterKeyHint="search"
           />
           <div className="view-toggle" role="group" aria-label="보기 전환">
@@ -295,6 +302,17 @@ export default function App() {
             )}
             {sheet === 'import' && (
               <ImportModal onImport={handleImport} onClose={() => setSheet('none')} sources={sources} />
+            )}
+            {sheet === 'tracking' && (
+              <TrackingModal
+                orders={orders}
+                onApply={(updates) => {
+                  const n = applyTracking(updates);
+                  showToast(`${n}건 송장 저장`);
+                  return n;
+                }}
+                onClose={() => setSheet('none')}
+              />
             )}
             {sheet === 'google' && (
               <div className="sheet-body">
