@@ -10,6 +10,8 @@ export interface Order {
   group?: string;
   status: OrderStatus;
   priority: boolean;
+  /** 우체국 등기/택배 송장번호 */
+  trackingNumber?: string;
   createdAt: number;
   updatedAt: number;
 }
