@@ -3,7 +3,7 @@ import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
-import { SMS_TEMPLATES, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { SMS_TEMPLATES, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 
 interface Props {
@@ -95,6 +95,11 @@ export function OrderTable({
                 </td>
                 <td className="col-sticky-2 col-name">
                   <span className="table-name">{order.name}</span>
+                  {order.trackingNumber ? (
+                    <span className="table-tracking" title="등기번호">
+                      {order.trackingNumber}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="col-items">
                   <button
@@ -218,7 +223,7 @@ export function OrderTable({
                                 role="menuitem"
                                 href={buildSmsLink(
                                   order.phone,
-                                  SMS_TEMPLATES.발송.body,
+                                  buildShippingSmsBody(order.trackingNumber),
                                 )}
                                 onClick={() => setOpenMenu(null)}
                               >
