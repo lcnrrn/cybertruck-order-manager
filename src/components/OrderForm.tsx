@@ -102,7 +102,7 @@ export function OrderForm({
       address: values.address.trim(),
       phone: values.phone.replace(/[-\s]/g, '').trim(),
       group: values.group.trim(),
-      trackingNumber: values.trackingNumber.replace(/\D/g, '').trim(),
+      trackingNumber: values.trackingNumber.replace(/\s/g, '').trim(),
     });
   }
 
@@ -206,13 +206,23 @@ export function OrderForm({
       </fieldset>
 
       <label className="field">
-        <span>송장번호</span>
+        <span>등기번호 (송장)</span>
         <input
-          inputMode="numeric"
           value={values.trackingNumber}
           onChange={(e) => set('trackingNumber', e.target.value)}
-          placeholder="우체국 13자리"
+          placeholder="우체국 13자리 등기번호"
+          inputMode="numeric"
+          autoComplete="off"
         />
+        {values.trackingNumber ? (
+          <button
+            type="button"
+            className="btn-link tracking-clear"
+            onClick={() => set('trackingNumber', '')}
+          >
+            송장 지우기
+          </button>
+        ) : null}
       </label>
 
       <fieldset className="field">

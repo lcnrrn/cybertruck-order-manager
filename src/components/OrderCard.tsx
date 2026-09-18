@@ -2,7 +2,7 @@ import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
-import { SMS_TEMPLATES, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { SMS_TEMPLATES, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 
 interface Props {
@@ -59,6 +59,11 @@ export function OrderCard({
         <div className="order-items"><ProductBadges items={order.items} products={products} /></div>
         <p className="order-address">{order.address || '주소 없음'}</p>
         <p className="order-phone">{formatPhoneDisplay(order.phone) || '연락처 없음'}</p>
+        {order.trackingNumber ? (
+          <p className="order-tracking" title="등기번호">
+            송장 <code>{order.trackingNumber}</code>
+          </p>
+        ) : null}
       </div>
 
       <div className="copy-row" role="group" aria-label="복사">
@@ -119,7 +124,7 @@ export function OrderCard({
             </a>
             <a
               className="btn btn-ghost"
-              href={buildSmsLink(order.phone, SMS_TEMPLATES.발송.body)}
+              href={buildSmsLink(order.phone, buildShippingSmsBody(order.trackingNumber))}
             >
               발송안내
             </a>
