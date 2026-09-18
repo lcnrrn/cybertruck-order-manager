@@ -1,5 +1,3 @@
-import { buildShipSmsBody } from './parseTracking';
-
 export type SmsTemplateId = '완료' | '발송' | 'custom';
 
 export const SMS_TEMPLATES: Record<
@@ -12,14 +10,20 @@ export const SMS_TEMPLATES: Record<
   },
   발송: {
     label: '발송 안내',
-    body: buildShipSmsBody(),
+    body: '안녕하세요. 주문하신 제품이 발송되었습니다. 도착까지 조금만 기다려 주세요.',
   },
 };
 
-export function shipSmsBody(trackingNumber?: string): string {
-  return buildShipSmsBody(trackingNumber);
+/** 발송안내 SMS — 등기번호가 있으면 본문에 포함 */
+export function buildShippingSmsBody(trackingNumber?: string): string {
+  const tn = trackingNumber?.trim();
+  if (tn) {
+    return `안녕하세요. 주문하신 제품이 발송되었습니다. 우체국 등기번호는 ${tn} 입니다. 도착까지 조금만 기다려 주세요.`;
+  }
+  return SMS_TEMPLATES.발송.body;
 }
 
+/** sms: URI — iOS/Android 호환. body는 선택 */
 export function buildSmsLink(phone: string, body?: string): string {
   const digits = phone.replace(/[^\d+]/g, '');
   if (!digits) return '#';

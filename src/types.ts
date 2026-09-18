@@ -10,7 +10,7 @@ export interface Order {
   group?: string;
   status: OrderStatus;
   priority: boolean;
-  /** 우체국 등기/택배 송장번호 */
+  /** 우체국 등기(송장)번호 — 기존 저장분에는 없을 수 있음 */
   trackingNumber?: string;
   createdAt: number;
   updatedAt: number;
