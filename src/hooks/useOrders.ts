@@ -32,9 +32,17 @@ export function useOrders() {
 
   const updateOrder = useCallback((id: string, patch: Partial<Order>) => {
     setOrders((prev) =>
-      prev.map((o) =>
-        o.id === id ? { ...o, ...patch, id: o.id, updatedAt: Date.now() } : o,
-      ),
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const next: Order = { ...o, ...patch, id: o.id, updatedAt: Date.now() };
+        // empty trackingNumber clears the field
+        if ('trackingNumber' in patch) {
+          const tn = patch.trackingNumber?.trim();
+          if (tn) next.trackingNumber = tn;
+          else delete next.trackingNumber;
+        }
+        return next;
+      }),
     );
   }, []);
 
@@ -47,21 +55,6 @@ export function useOrders() {
       updateOrder(id, { status });
     },
     [updateOrder],
-  );
-
-  const applyTracking = useCallback(
-    (updates: { id: string; trackingNumber: string }[]) => {
-      const map = new Map(updates.map((u) => [u.id, u.trackingNumber]));
-      setOrders((prev) =>
-        prev.map((o) => {
-          const t = map.get(o.id);
-          if (!t) return o;
-          return { ...o, trackingNumber: t, updatedAt: Date.now() };
-        }),
-      );
-      return updates.length;
-    },
-    [],
   );
 
   const importOrders = useCallback((partials: Partial<Order>[]) => {
@@ -91,7 +84,6 @@ export function useOrders() {
     deleteOrder,
     setStatus,
     importOrders,
-    applyTracking,
   };
 }
 
