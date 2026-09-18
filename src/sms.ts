@@ -1,3 +1,5 @@
+import { buildShipSmsBody } from './parseTracking';
+
 export type SmsTemplateId = '완료' | '발송' | 'custom';
 
 export const SMS_TEMPLATES: Record<
@@ -10,11 +12,14 @@ export const SMS_TEMPLATES: Record<
   },
   발송: {
     label: '발송 안내',
-    body: '안녕하세요. 주문하신 제품이 발송되었습니다. 도착까지 조금만 기다려 주세요.',
+    body: buildShipSmsBody(),
   },
 };
 
-/** sms: URI - iOS/Android compatible. body optional */
+export function shipSmsBody(trackingNumber?: string): string {
+  return buildShipSmsBody(trackingNumber);
+}
+
 export function buildSmsLink(phone: string, body?: string): string {
   const digits = phone.replace(/[^\d+]/g, '');
   if (!digits) return '#';
