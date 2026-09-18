@@ -46,6 +46,7 @@ function orderToRow(o: Order): string[] {
     o.priority ? 'true' : 'false',
     String(o.updatedAt),
     String(o.createdAt),
+    o.trackingNumber || '',
   ];
 }
 
@@ -59,6 +60,7 @@ function rowToOrder(row: string[]): Order | null {
   if (!id || id === 'id') return null;
   const updatedAt = Number(row[8]) || Date.now();
   const createdAt = Number(row[9]) || updatedAt;
+  const tracking = (row[10] || '').trim();
   return {
     id,
     name: row[1] || '이름없음',
@@ -70,6 +72,7 @@ function rowToOrder(row: string[]): Order | null {
     priority: String(row[7]).toLowerCase() === 'true' || row[7] === '1',
     updatedAt,
     createdAt,
+    trackingNumber: tracking || undefined,
   };
 }
 
@@ -115,7 +118,7 @@ export async function ensureOrdersSheet(accessToken: string): Promise<void> {
 export async function pullOrders(accessToken: string): Promise<Order[]> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:J`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:K`);
   const res = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}`);
   if (!res.ok) {
     throw new Error(`시트 읽기 실패: ${await readError(res)}`);
@@ -137,7 +140,7 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
 export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:J`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:K`);
 
   const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}:clear`, {
     method: 'POST',
