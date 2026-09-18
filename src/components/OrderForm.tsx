@@ -16,6 +16,7 @@ export type OrderFormValues = {
   group: string;
   status: OrderStatus;
   priority: boolean;
+  trackingNumber: string;
 };
 
 interface Props {
@@ -34,6 +35,7 @@ const empty: OrderFormValues = {
   group: '',
   status: '대기',
   priority: false,
+  trackingNumber: '',
 };
 
 export function OrderForm({
@@ -57,6 +59,7 @@ export function OrderForm({
         group: initial.group || '',
         status: initial.status,
         priority: initial.priority,
+        trackingNumber: initial.trackingNumber || '',
       });
       const parsed = parseItemsAgainstCatalog(initial.items, products);
       setSelected(parsed.selected);
@@ -99,6 +102,7 @@ export function OrderForm({
       address: values.address.trim(),
       phone: values.phone.replace(/[-\s]/g, '').trim(),
       group: values.group.trim(),
+      trackingNumber: values.trackingNumber.replace(/\D/g, '').trim(),
     });
   }
 
@@ -200,6 +204,16 @@ export function OrderForm({
           sources={sources}
         />
       </fieldset>
+
+      <label className="field">
+        <span>송장번호</span>
+        <input
+          inputMode="numeric"
+          value={values.trackingNumber}
+          onChange={(e) => set('trackingNumber', e.target.value)}
+          placeholder="우체국 13자리"
+        />
+      </label>
 
       <fieldset className="field">
         <legend>상태</legend>
