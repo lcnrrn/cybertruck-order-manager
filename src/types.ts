@@ -16,9 +16,22 @@ export interface Order {
   updatedAt: number;
 }
 
-export type StatusFilter = '전체' | OrderStatus;
+/** 작업중 = 대기 + 제작중 (기본 작업 큐) */
+export type StatusFilter = '작업중' | '전체' | OrderStatus;
 
 export const STATUS_OPTIONS: OrderStatus[] = ['대기', '제작중', '완료'];
-export const FILTER_OPTIONS: StatusFilter[] = ['전체', '대기', '제작중', '완료'];
+export const FILTER_OPTIONS: StatusFilter[] = ['작업중', '대기', '제작중', '완료', '전체'];
+
+export type PeriodPreset = 'this_month' | 'last_month' | 'all' | 'custom';
+
+export interface PeriodRange {
+  preset: PeriodPreset;
+  /** YYYY-MM-DD — custom only */
+  from?: string;
+  /** YYYY-MM-DD — custom only */
+  to?: string;
+}
 
 export const STORAGE_KEY = 'cybertruck-orders-v1';
+export const STATUS_FILTER_KEY = 'cybertruck-status-filter';
+export const PERIOD_FILTER_KEY = 'cybertruck-period-filter';
