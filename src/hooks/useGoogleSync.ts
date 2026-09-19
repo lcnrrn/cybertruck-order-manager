@@ -6,7 +6,12 @@ import {
   requestAccessToken,
   revokeAccessToken,
 } from '../google/gis';
-import { mergeByUpdatedAt, pullOrders, pushOrders } from '../google/sheets';
+import {
+  canPushLocalOverRemote,
+  mergeOrdersForSync,
+  pullOrders,
+  pushOrders,
+} from '../google/sheets';
 
 const LS_SIGNED = 'cybertruck-google-signed';
 const LS_EMAIL = 'cybertruck-google-email';
@@ -36,6 +41,10 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
   const ordersRef = useRef(orders);
   const tokenRef = useRef<string | null>(null);
   const skipPushRef = useRef(false);
+  /** Block write-through until the first pull+merge finishes (prevents race wipe). */
+  const initialSyncDoneRef = useRef(false);
+  /** Row count from last successful pull; used to refuse empty/sample overwrite. */
+  const lastRemoteCountRef = useRef(-1);
   const debounceTimer = useRef<number | null>(null);
   const signedIntent = useRef(false);
   const replaceOrdersRef = useRef(replaceOrders);
@@ -69,31 +78,51 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     setConfigured(hasGoogleConfig());
   }, []);
 
-  const runPullMergePush = useCallback(async (token: string, toastMsg?: string) => {
-    setStatus('syncing');
-    setLastError(null);
-    try {
-      const remote = await pullOrders(token);
-      const merged = mergeByUpdatedAt(ordersRef.current, remote);
-      skipPushRef.current = true;
-      replaceOrdersRef.current(merged);
-      await pushOrders(token, merged);
-      setStatus('idle');
-      onToastRef.current?.(toastMsg || '동기화 완료');
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '동기화 실패';
-      setLastError(msg);
+  const guardedPush = useCallback(async (token: string, next: Order[]) => {
+    const guard = canPushLocalOverRemote(next, lastRemoteCountRef.current);
+    if (!guard.ok) {
+      onToastRef.current?.(guard.reason);
+      setLastError(guard.reason);
       setStatus('error');
-      onToastRef.current?.(msg);
-      throw e;
+      return false;
     }
+    await pushOrders(token, next);
+    lastRemoteCountRef.current = next.length;
+    return true;
   }, []);
+
+  const runPullMergePush = useCallback(
+    async (token: string, toastMsg?: string) => {
+      setStatus('syncing');
+      setLastError(null);
+      try {
+        const remote = await pullOrders(token);
+        lastRemoteCountRef.current = remote.length;
+        const merged = mergeOrdersForSync(ordersRef.current, remote);
+        skipPushRef.current = true;
+        replaceOrdersRef.current(merged);
+        const pushed = await guardedPush(token, merged);
+        initialSyncDoneRef.current = true;
+        setStatus(pushed ? 'idle' : 'error');
+        if (pushed) onToastRef.current?.(toastMsg || '동기화 완료');
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '동기화 실패';
+        setLastError(msg);
+        setStatus('error');
+        onToastRef.current?.(msg);
+        // Allow later manual sync; still block auto write-through until success.
+        throw e;
+      }
+    },
+    [guardedPush],
+  );
 
   const connect = useCallback(async () => {
     if (!getClientId() || !getSheetId()) {
       onToastRef.current?.('설정에서 Client ID와 Sheet ID를 입력해 주세요.');
       return false;
     }
+    initialSyncDoneRef.current = false;
     setStatus('connecting');
     setLastError(null);
     try {
@@ -129,6 +158,8 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     tokenRef.current = null;
     setEmail(null);
     signedIntent.current = false;
+    initialSyncDoneRef.current = false;
+    lastRemoteCountRef.current = -1;
     try {
       localStorage.removeItem(LS_SIGNED);
       localStorage.removeItem(LS_EMAIL);
@@ -174,9 +205,10 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     }
   }, [runPullMergePush]);
 
-  // Debounced write-through when signed in and orders change
+  // Debounced write-through — only after initial pull+merge succeeded
   useEffect(() => {
     if (!accessToken) return;
+    if (!initialSyncDoneRef.current) return;
     if (skipPushRef.current) {
       skipPushRef.current = false;
       return;
@@ -186,12 +218,12 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
     debounceTimer.current = window.setTimeout(() => {
       const token = tokenRef.current;
-      if (!token) return;
+      if (!token || !initialSyncDoneRef.current) return;
       setStatus('syncing');
-      pushOrders(token, ordersRef.current)
-        .then(() => {
-          setStatus('idle');
-          setLastError(null);
+      void guardedPush(token, ordersRef.current)
+        .then((ok) => {
+          setStatus(ok ? 'idle' : 'error');
+          if (ok) setLastError(null);
         })
         .catch((e) => {
           const msg = e instanceof Error ? e.message : '시트 저장 실패';
@@ -203,7 +235,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     return () => {
       if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
     };
-  }, [orders, accessToken]);
+  }, [orders, accessToken, guardedPush]);
 
   // Silent re-auth on load if previously signed in
   useEffect(() => {
