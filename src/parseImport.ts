@@ -1,17 +1,55 @@
 import type { Order } from './types';
 import { stripItemPrices } from './products';
 
+/** Korean phone (01x…) — capture then strip from line. */
+const PHONE_RE = /(01[0-9][-.\s]?\d{3,4}[-.\s]?\d{4})/;
+
+/**
+ * Earliest index where a Korean street address likely begins.
+ * Cues: 시/군/구 (+ 로/길/동/읍/면/아파트…) or numbered 로/길 / N동 N호.
+ */
+function findAddressStart(text: string): number {
+  const patterns: RegExp[] = [
+    // 부산시 동래구 … / 서울특별시 강남구 …
+    /[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)?\s*[가-힣]+[시군구](?:\s|[가-힣0-9])/,
+    // …시/군/구 + 로/길/동/읍/면
+    /[가-힣]+[시군구]\s+[가-힣0-9\-]+(?:로|길|동|읍|면|가)/,
+    // 사직로80 / ○○길12
+    /[가-힣0-9]+(?:로|길)\s*\d+/,
+    // ○○아파트 (often after street)
+    /[가-힣0-9]+아파트/,
+    // 115동 1403호
+    /\d+\s*동\s*\d+\s*호/,
+  ];
+
+  let best = -1;
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m && m.index !== undefined) {
+      if (best < 0 || m.index < best) best = m.index;
+    }
+  }
+  return best;
+}
+
+function cleanSeg(s: string): string {
+  return s.replace(/^[/|·\s\-–—]+|[/|·\s\-–—]+$/g, '').trim();
+}
+
 /**
  * Reminders 스타일 한 줄 파싱 (best-effort)
  * 예: `이름 - 주문 / 주소 01012345678`
  *     `김민수 / 사이드미러 / 서울시 강남구 ... / 010-1234-5678`
+ *
+ * Does NOT split every `/` into name/items/address — products stay in items;
+ * address is detected via Korean address cues.
  */
 export function parseReminderLine(line: string): Partial<Order> | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
 
-  // 전화번호 추출 (010으로 시작하는 한국 번호)
-  const phoneMatch = trimmed.match(/(01[0-9][-.\s]?\d{3,4}[-.\s]?\d{4})/);
+  // 1) Phone first
+  const phoneMatch = trimmed.match(PHONE_RE);
   const phone = phoneMatch
     ? phoneMatch[1].replace(/[-.\s]/g, '')
     : '';
@@ -20,40 +58,59 @@ export function parseReminderLine(line: string): Partial<Order> | null {
   if (phoneMatch) {
     rest = trimmed.replace(phoneMatch[0], '').trim();
   }
+  rest = cleanSeg(rest);
+  if (!rest && !phone) return null;
 
-  // 구분자로 분리: " - ", " / ", " | ", 탭 등
-  const parts = rest
-    .split(/\s*[-–—|/·]\s*|\t+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-
-  if (parts.length === 0 && !phone) return null;
-
-  // 흔한 패턴: 이름 / 주문 / 주소
+  // 2) Name: first " - " / " – " / " — "
   let name = '';
+  let afterName = rest;
+  const dashSplit = rest.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+  if (dashSplit) {
+    name = dashSplit[1].trim();
+    afterName = dashSplit[2].trim();
+  } else if (/\s*\/\s*/.test(rest)) {
+    // Fallback: first `/`-segment as name (legacy "이름 / 주문 / 주소")
+    const slashIdx = rest.search(/\s*\/\s*/);
+    name = rest.slice(0, slashIdx).trim();
+    afterName = rest.slice(slashIdx).replace(/^\s*\/\s*/, '').trim();
+  } else {
+    // Single blob — try address split; leftover name
+    name = rest;
+    afterName = '';
+  }
+
+  // 3) Address vs items in remainder
   let items = '';
   let address = '';
 
-  if (parts.length >= 3) {
-    name = parts[0];
-    items = parts[1];
-    address = parts.slice(2).join(' ').trim();
-  } else if (parts.length === 2) {
-    name = parts[0];
-    // 두 번째가 주소처럼 보이면 (시/구/동/로/길 포함)
-    if (/[시군구읍면동로길호]/.test(parts[1])) {
-      address = parts[1];
-      items = '';
+  if (afterName) {
+    const addrIdx = findAddressStart(afterName);
+    if (addrIdx >= 0) {
+      items = cleanSeg(afterName.slice(0, addrIdx));
+      address = cleanSeg(afterName.slice(addrIdx));
+    } else if (/[시군구읍면동로길호아파트]/.test(afterName) && !/\//.test(afterName)) {
+      // Whole remainder looks like address (no product separators)
+      address = cleanSeg(afterName);
     } else {
-      items = parts[1];
+      items = cleanSeg(afterName);
     }
-  } else if (parts.length === 1) {
-    name = parts[0];
+  } else if (name) {
+    // No separator: maybe "이름주소전화" rare — try peel address off name
+    const addrIdx = findAddressStart(name);
+    if (addrIdx > 0) {
+      const maybeName = cleanSeg(name.slice(0, addrIdx));
+      const maybeAddr = cleanSeg(name.slice(addrIdx));
+      if (maybeName && maybeAddr) {
+        name = maybeName;
+        address = maybeAddr;
+      }
+    }
   }
 
-  // 주소에서 남은 잡음 정리
-  address = address.replace(/^[/|\-–—·\s]+|[/|\-–—·\s]+$/g, '').trim();
-  items = items.replace(/^[/|\-–—·\s]+|[/|\-–—·\s]+$/g, '').trim();
+  // Normalize items: keep ` / ` between product segments (already present)
+  items = items.replace(/\s*\/\s*/g, ' / ').replace(/\s{2,}/g, ' ').trim();
+  address = address.replace(/\s{2,}/g, ' ').trim();
+  name = name.trim();
 
   if (!name && !items && !address && !phone) return null;
 
