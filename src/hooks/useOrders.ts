@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Order, OrderStatus, StatusFilter } from '../types';
+import type { Order, OrderStatus, PeriodRange, StatusFilter } from '../types';
 import type { SourceFilter } from '../sources';
 import { loadOrders, saveOrders } from '../storage';
+import { orderTimestamp, resolvePeriodBounds } from '../period';
 
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function matchesStatus(status: OrderStatus, filter: StatusFilter): boolean {
+  if (filter === '전체') return true;
+  if (filter === '작업중') return status === '대기' || status === '제작중';
+  return status === filter;
+}
+
+function normalizeSearch(s: string): string {
+  return s.toLowerCase().replace(/[-\s]/g, '');
 }
 
 export function useOrders() {
@@ -92,31 +103,40 @@ export function useFilteredOrders(
   statusFilter: StatusFilter,
   sourceFilter: SourceFilter,
   query: string,
+  period: PeriodRange,
 ) {
   return useMemo(() => {
-    const q = query.trim().toLowerCase().replace(/[-\s]/g, '');
+    const q = normalizeSearch(query.trim());
+    const bounds = resolvePeriodBounds(period);
+
     return orders
-      .filter((o) => (statusFilter === '전체' ? true : o.status === statusFilter))
+      .filter((o) => matchesStatus(o.status, statusFilter))
       .filter((o) => {
         if (sourceFilter === '전체') return true;
         return (o.group || '').trim() === sourceFilter;
       })
       .filter((o) => {
+        if (!bounds) return true;
+        const ts = orderTimestamp(o.createdAt, o.updatedAt);
+        return ts >= bounds[0] && ts <= bounds[1];
+      })
+      .filter((o) => {
         if (!q) return true;
-        const name = o.name.toLowerCase();
-        const phone = o.phone.replace(/[-\s]/g, '').toLowerCase();
-        const group = (o.group || '').toLowerCase();
-        const tracking = (o.trackingNumber || '').toLowerCase();
-        return (
-          name.includes(q) ||
-          phone.includes(q) ||
-          group.includes(q) ||
-          tracking.includes(q)
-        );
+        const hay = [
+          o.name,
+          o.phone,
+          o.address,
+          o.items,
+          o.group || '',
+          o.trackingNumber || '',
+        ]
+          .map(normalizeSearch)
+          .join(' ');
+        return hay.includes(q);
       })
       .sort((a, b) => {
         if (a.priority !== b.priority) return a.priority ? -1 : 1;
         return b.updatedAt - a.updatedAt;
       });
-  }, [orders, statusFilter, sourceFilter, query]);
+  }, [orders, statusFilter, sourceFilter, query, period]);
 }
