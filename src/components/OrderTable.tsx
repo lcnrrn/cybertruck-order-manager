@@ -3,7 +3,7 @@ import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
-import { SMS_TEMPLATES, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 
 interface Props {
@@ -212,7 +212,7 @@ export function OrderTable({
                                 role="menuitem"
                                 href={buildSmsLink(
                                   order.phone,
-                                  SMS_TEMPLATES.완료.body,
+                                  buildCompleteSmsBody(),
                                 )}
                                 onClick={() => setOpenMenu(null)}
                               >
