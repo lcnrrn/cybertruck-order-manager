@@ -35,6 +35,10 @@ export function GoogleSettings({ onSaved, onClose, onConnect }: Props) {
         Google Cloud에서 OAuth 웹 클라이언트와 Sheets API를 설정한 뒤, Client ID와
         스프레드시트 ID를 붙여넣으세요. 값은 이 기기의 브라우저에만 저장됩니다.
       </p>
+      <p className="hint">
+        시트에 백업해 두면 앱이 업데이트되거나 브라우저 저장소가 비워져도 주문을
+        다시 불러올 수 있습니다.
+      </p>
 
       <label className="field">
         <span>OAuth Client ID</span>

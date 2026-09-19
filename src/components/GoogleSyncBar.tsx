@@ -22,49 +22,56 @@ export function GoogleSyncBar({
   const busy = status === 'connecting' || status === 'syncing';
 
   return (
-    <div className="google-sync-bar">
+    <div className="google-sync-bar-wrap">
+      <div className="google-sync-bar">
+        {!connected ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary google-connect-btn"
+              onClick={onConnect}
+              disabled={busy}
+            >
+              {status === 'connecting' ? '연결 중…' : '구글 시트 연결'}
+            </button>
+            <button type="button" className="btn btn-ghost btn-compact" onClick={onOpenSettings}>
+              설정
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="google-email" title={email || undefined}>
+              {email || '연결됨'}
+              {status === 'syncing' ? ' · 동기화 중…' : null}
+              {status === 'error' ? ' · 오류' : null}
+            </span>
+            <button
+              type="button"
+              className="btn btn-secondary btn-compact"
+              onClick={onSync}
+              disabled={busy}
+            >
+              동기화
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-compact"
+              onClick={onDisconnect}
+              disabled={busy}
+            >
+              연결 해제
+            </button>
+            <button type="button" className="btn btn-ghost btn-compact" onClick={onOpenSettings}>
+              설정
+            </button>
+          </>
+        )}
+      </div>
       {!connected ? (
-        <>
-          <button
-            type="button"
-            className="btn btn-secondary google-connect-btn"
-            onClick={onConnect}
-            disabled={busy}
-          >
-            {status === 'connecting' ? '연결 중…' : '구글 시트 연결'}
-          </button>
-          <button type="button" className="btn btn-ghost btn-compact" onClick={onOpenSettings}>
-            설정
-          </button>
-        </>
-      ) : (
-        <>
-          <span className="google-email" title={email || undefined}>
-            {email || '연결됨'}
-            {status === 'syncing' ? ' · 동기화 중…' : null}
-            {status === 'error' ? ' · 오류' : null}
-          </span>
-          <button
-            type="button"
-            className="btn btn-secondary btn-compact"
-            onClick={onSync}
-            disabled={busy}
-          >
-            동기화
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost btn-compact"
-            onClick={onDisconnect}
-            disabled={busy}
-          >
-            연결 해제
-          </button>
-          <button type="button" className="btn btn-ghost btn-compact" onClick={onOpenSettings}>
-            설정
-          </button>
-        </>
-      )}
+        <p className="google-backup-hint">
+          팁: 구글 시트를 연결하면 앱 업데이트·다른 기기에서도 주문이 유지됩니다.
+        </p>
+      ) : null}
     </div>
   );
 }
