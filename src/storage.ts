@@ -2,6 +2,14 @@ import type { Order, OrderStatus } from './types';
 import { STORAGE_KEY } from './types';
 import { SAMPLE_ORDERS } from './sampleData';
 
+/** Older keys that may still hold orders from earlier builds. */
+const LEGACY_STORAGE_KEYS = [
+  'cybertruck-orders',
+  'cybertruck-orders-v0',
+  'cybertruck_orders',
+  'orders',
+] as const;
+
 function parseStatus(raw: unknown): OrderStatus {
   if (raw === '제작중' || raw === '완료' || raw === '대기') return raw;
   return '대기';
@@ -38,24 +46,76 @@ export function normalizeOrder(raw: unknown): Order | null {
   };
 }
 
+export function isSampleOrderId(id: string): boolean {
+  return id.startsWith('sample-');
+}
+
+/** True when the list is non-empty and every row looks like built-in demo data. */
+export function isSampleOnly(orders: Order[]): boolean {
+  return orders.length > 0 && orders.every((o) => isSampleOrderId(o.id));
+}
+
+function parseOrdersArray(raw: string): Order[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed.map(normalizeOrder).filter((o): o is Order => o !== null);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Load orders from localStorage.
+ * - Migrates legacy keys → STORAGE_KEY when primary is missing.
+ * - Empty saved array stays empty (do not re-seed samples — that felt like a wipe).
+ * - First visit (no key anywhere) seeds SAMPLE_ORDERS for demo.
+ */
 export function loadOrders(): Order[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw = localStorage.getItem(STORAGE_KEY);
+    let migratedFrom: string | null = null;
+
+    if (!raw) {
+      for (const key of LEGACY_STORAGE_KEYS) {
+        const legacy = localStorage.getItem(key);
+        if (legacy) {
+          raw = legacy;
+          migratedFrom = key;
+          break;
+        }
+      }
+    }
+
     if (!raw) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(SAMPLE_ORDERS));
-      return [...SAMPLE_ORDERS];
+      return SAMPLE_ORDERS.map((o) => ({ ...o }));
     }
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [...SAMPLE_ORDERS];
-    const orders = parsed
-      .map(normalizeOrder)
-      .filter((o): o is Order => o !== null);
-    return orders.length > 0 ? orders : [...SAMPLE_ORDERS];
+
+    const orders = parseOrdersArray(raw);
+    if (!orders) {
+      return SAMPLE_ORDERS.map((o) => ({ ...o }));
+    }
+
+    if (migratedFrom) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // Intentionally allow [] — user cleared all orders; do not resurrect samples.
+    return orders;
   } catch {
-    return [...SAMPLE_ORDERS];
+    return SAMPLE_ORDERS.map((o) => ({ ...o }));
   }
 }
 
 export function saveOrders(orders: Order[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+  } catch {
+    /* ignore quota / private mode */
+  }
 }
