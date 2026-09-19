@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { Order } from '../types';
 import { parseNaverFormFile, parseReminderText } from '../parseImport';
+import {
+  getProducts,
+  joinItems,
+  parseItemsAgainstCatalog,
+} from '../products';
 import { applyOrderSource } from '../sources';
 import { SourcePicker } from './SourcePicker';
 
@@ -10,6 +15,18 @@ interface Props {
   onImport: (partials: Partial<Order>[]) => number;
   onClose: () => void;
   sources: string[];
+}
+
+
+/** Map imported items text onto catalog chips; leftover → note (요청 등). */
+function alignItemsToCatalog(partials: Partial<Order>[]): Partial<Order>[] {
+  const catalog = getProducts();
+  return partials.map((o) => {
+    const raw = (o.items || '').trim();
+    if (!raw) return o;
+    const { selected, note } = parseItemsAgainstCatalog(raw, catalog);
+    return { ...o, items: joinItems(selected, note) };
+  });
 }
 
 export function ImportModal({ onImport, onClose, sources }: Props) {
@@ -22,7 +39,10 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
   /** Default 기타 (or empty); user must pick — no longer 네이버 폼. */
   const [source, setSource] = useState('기타');
 
-  const reminderPreview = useMemo(() => parseReminderText(text), [text]);
+  const reminderPreview = useMemo(
+    () => alignItemsToCatalog(parseReminderText(text)),
+    [text],
+  );
   const rawPreview = tab === 'naver' ? fileOrders : reminderPreview;
   const preview = useMemo(
     () => (source.trim() ? applyOrderSource(rawPreview, source.trim()) : rawPreview),
@@ -43,7 +63,7 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
     setParsing(true);
     try {
       const buf = await file.arrayBuffer();
-      const parsed = await parseNaverFormFile(buf);
+      const parsed = alignItemsToCatalog(await parseNaverFormFile(buf));
       setFileOrders(parsed);
       if (parsed.length === 0) {
         setFileError('파싱된 주문이 없습니다. 네이버 폼 Excel 헤더를 확인해 주세요.');
