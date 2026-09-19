@@ -1,0 +1,16 @@
+/* SMS settings + Sheets backup hint */
+.google-sync-bar-wrap {
+  margin-bottom: 12px;
+}
+
+.google-backup-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.sms-settings textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
