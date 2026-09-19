@@ -16,10 +16,11 @@ import { GoogleSyncBar } from './components/GoogleSyncBar';
 import { GoogleSettings } from './components/GoogleSettings';
 import { SourceManager } from './components/SourceManager';
 import { ProductManager } from './components/ProductManager';
+import { SmsSettings } from './components/SmsSettings';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking';
+type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms';
 type ListView = 'table' | 'card';
 
 const VIEW_STORAGE_KEY = 'cybertruck-list-view';
@@ -203,6 +204,9 @@ export default function App() {
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('products')}>
             제품 관리
           </button>
+          <button type="button" className="btn btn-ghost" onClick={() => setSheet('sms')}>
+            문자 템플릿
+          </button>
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('import')}>
             가져오기
           </button>
@@ -332,6 +336,14 @@ export default function App() {
                 onChange={handleProductsChange}
                 onClose={() => setSheet('none')}
               />
+            )}
+            {sheet === 'sms' && (
+              <div className="sheet-body">
+                <SmsSettings
+                  onClose={() => setSheet('none')}
+                  onSaved={() => showToast('문자 템플릿 저장됨')}
+                />
+              </div>
             )}
             {sheet === 'tracking' && (
               <TrackingRegisterModal
