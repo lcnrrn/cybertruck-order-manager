@@ -154,40 +154,172 @@ export function getProductColor(
 }
 
 /**
+ * Strip Korean price tokens like `13,000원` / `4500원` from item text.
+ * Quantities such as `3개` are preserved.
+ */
+export function stripItemPrices(text: string): string {
+  return text
+    .replace(/\s*[\d,]+(?:\.\d+)?\s*원/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
+function normalizeMatchKey(s: string): string {
+  return stripItemPrices(s)
+    .replace(/[()[\]{}]/g, ' ')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const prev = new Array<number>(cols);
+  const cur = new Array<number>(cols);
+  for (let j = 0; j < cols; j++) prev[j] = j;
+  for (let i = 1; i < rows; i++) {
+    cur[0] = i;
+    for (let j = 1; j < cols; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j < cols; j++) prev[j] = cur[j];
+  }
+  return prev[b.length];
+}
+
+function isRequestPart(part: string): boolean {
+  return /^\s*요청\s*[:：]/.test(part);
+}
+
+/** Score how well an items fragment matches a catalog product name (0 = none). */
+function scoreCatalogMatch(part: string, catalogName: string): number {
+  const cleaned = stripItemPrices(part).trim();
+  if (!cleaned || isRequestPart(cleaned)) return 0;
+
+  if (cleaned === catalogName) return 100;
+
+  const p = normalizeMatchKey(cleaned);
+  const c = normalizeMatchKey(catalogName);
+  if (!p || !c) return 0;
+  if (p === c) return 98;
+
+  // Containment (e.g. "우체국 택배" in longer text, or option text inside catalog name)
+  if (p.length >= 4 && c.includes(p)) return 85 + Math.min(p.length, 10);
+  if (c.length >= 4 && p.includes(c)) return 85 + Math.min(c.length, 10);
+
+  // Near-equal whole string (마운틴 ↔ 마운트)
+  const maxLen = Math.max(p.length, c.length);
+  const dist = levenshtein(p, c);
+  const allowed = maxLen <= 8 ? 1 : 2;
+  if (dist <= allowed) return 90 - dist;
+
+  // Parenthetical option of catalog vs fragment (뒷자석 3개)
+  const paren = catalogName.match(/\(([^)]+)\)/);
+  if (paren) {
+    const pn = normalizeMatchKey(paren[1]);
+    if (pn && p) {
+      if (pn === p) return 88;
+      if (pn.length >= 3 && (pn.includes(p) || p.includes(pn))) return 80;
+      const pd = levenshtein(pn, p);
+      if (pd <= 1 && Math.min(pn.length, p.length) >= 3) return 82;
+    }
+  }
+
+  // Token overlap with light fuzzy (좌석 ↔ 자석)
+  const partTokens = cleaned
+    .replace(/[()[\]{}]/g, ' ')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+  const nameTokens = catalogName
+    .replace(/[()[\]{}]/g, ' ')
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+  if (partTokens.length === 0 || nameTokens.length === 0) return 0;
+
+  let hits = 0;
+  for (const pt of partTokens) {
+    const pk = normalizeMatchKey(pt);
+    const matched = nameTokens.some((nt) => {
+      const nk = normalizeMatchKey(nt);
+      if (!pk || !nk) return false;
+      if (pk === nk || nk.includes(pk) || pk.includes(nk)) return true;
+      return (
+        Math.min(pk.length, nk.length) >= 3 &&
+        levenshtein(pk, nk) <= 1
+      );
+    });
+    if (matched) hits += 1;
+  }
+  const ratio = hits / partTokens.length;
+  if (ratio >= 0.75 && hits >= 1) return 60 + Math.round(ratio * 20);
+  return 0;
+}
+
+/**
  * Split items by ` / ` or `,` and match catalog names (best-effort).
- * Unmatched fragments become the free-text note.
+ * Strips price tokens first. Unmatched fragments become the free-text note.
  */
 export function parseItemsAgainstCatalog(
   items: string,
   catalog: Product[] | string[],
 ): { selected: string[]; note: string } {
-  const raw = (items || '').trim();
+  const raw = stripItemPrices(items || '').trim();
   if (!raw) return { selected: [], note: '' };
 
   const names = catalog.map((c) => (typeof c === 'string' ? c : c.name));
-  const catalogSet = new Set(names);
 
   const parts = raw
     .split(/\s*\/\s*|\s*,\s*/)
-    .map((p) => p.trim())
+    .map((p) => stripItemPrices(p).trim())
     .filter(Boolean);
 
   const selectedSet = new Set<string>();
   const extras: string[] = [];
+  const used = new Set<string>();
 
   for (const part of parts) {
-    if (catalogSet.has(part)) {
-      selectedSet.add(part);
+    if (isRequestPart(part)) {
+      extras.push(part);
       continue;
     }
-    const norm = part.replace(/\s+/g, ' ').toLowerCase();
-    const fuzzy = names.find(
-      (c) => c.replace(/\s+/g, ' ').toLowerCase() === norm,
-    );
-    if (fuzzy) {
-      selectedSet.add(fuzzy);
+
+    let best: string | null = null;
+    let bestScore = 0;
+    for (const name of names) {
+      if (used.has(name)) continue;
+      const score = scoreCatalogMatch(part, name);
+      if (score > bestScore) {
+        bestScore = score;
+        best = name;
+      }
+    }
+
+    // Prefer longer catalog names on ties (already handled by first max;
+    // bump specificity: if equal scores, prefer longer name)
+    if (best && bestScore >= 60) {
+      // Re-scan for equal score longer name
+      let chosen = best;
+      for (const name of names) {
+        if (used.has(name)) continue;
+        const score = scoreCatalogMatch(part, name);
+        if (
+          score === bestScore &&
+          name.length > chosen.length
+        ) {
+          chosen = name;
+        }
+      }
+      selectedSet.add(chosen);
+      used.add(chosen);
       continue;
     }
+
     extras.push(part);
   }
 

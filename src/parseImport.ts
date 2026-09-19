@@ -1,4 +1,5 @@
 import type { Order } from './types';
+import { stripItemPrices } from './products';
 
 /**
  * Reminders 스타일 한 줄 파싱 (best-effort)
@@ -123,6 +124,7 @@ function isMemoHeader(raw: string): boolean {
 
 /**
  * Parse Naver Form survey export rows (first row = headers).
+ * Strips price tokens (e.g. `13,000원`) from option/shipping cells.
  * Skips empty name+phone rows. Default status: 대기.
  */
 export function parseNaverFormRows(rows: unknown[][]): Partial<Order>[] {
@@ -161,12 +163,12 @@ export function parseNaverFormRows(rows: unknown[][]): Partial<Order>[] {
 
     const itemParts: string[] = [];
     for (const i of productIdxs) {
-      const v = cellStr(row[i]);
+      const v = stripItemPrices(cellStr(row[i]));
       if (v) itemParts.push(v);
     }
 
     if (shipIdx >= 0) {
-      const ship = cellStr(row[shipIdx]);
+      const ship = stripItemPrices(cellStr(row[shipIdx]));
       if (ship) itemParts.push(ship);
     }
 
