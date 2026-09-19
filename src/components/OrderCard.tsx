@@ -2,7 +2,7 @@ import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
-import { SMS_TEMPLATES, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 
 interface Props {
@@ -118,7 +118,7 @@ export function OrderCard({
             </a>
             <a
               className="btn btn-ghost"
-              href={buildSmsLink(order.phone, SMS_TEMPLATES.완료.body)}
+              href={buildSmsLink(order.phone, buildCompleteSmsBody())}
             >
               완료안내
             </a>
