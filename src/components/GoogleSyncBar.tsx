@@ -2,6 +2,7 @@ import type { SyncStatus } from '../hooks/useGoogleSync';
 
 interface Props {
   connected: boolean;
+  needsLogin?: boolean;
   email: string | null;
   status: SyncStatus;
   onConnect: () => void;
@@ -12,6 +13,7 @@ interface Props {
 
 export function GoogleSyncBar({
   connected,
+  needsLogin,
   email,
   status,
   onConnect,
@@ -42,6 +44,7 @@ export function GoogleSyncBar({
           <>
             <span className="google-email" title={email || undefined}>
               {email || '연결됨'}
+              {status === 'idle' ? ' · 자동 동기화 켜짐' : null}
               {status === 'syncing' ? ' · 동기화 중…' : null}
               {status === 'error' ? ' · 오류' : null}
             </span>
@@ -67,7 +70,11 @@ export function GoogleSyncBar({
           </>
         )}
       </div>
-      {!connected ? (
+      {!connected && needsLogin ? (
+        <p className="google-backup-hint">
+          자동 로그인이 만료됐어요. 위 ‘구글 시트 연결’을 한 번만 눌러 주세요. 이후엔 자동 동기화됩니다.
+        </p>
+      ) : !connected ? (
         <p className="google-backup-hint">
           팁: 구글 시트를 연결하면 앱 업데이트·다른 기기에서도 주문이 유지됩니다.
         </p>

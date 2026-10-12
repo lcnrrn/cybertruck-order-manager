@@ -303,6 +303,7 @@ export default function App() {
 
       <GoogleSyncBar
         connected={google.connected}
+        needsLogin={google.needsLogin}
         email={google.email}
         status={google.status}
         onConnect={handleConnectClick}
@@ -460,7 +461,7 @@ export default function App() {
             )}
             {sheet === 'tracking' && (
               <TrackingRegisterModal
-                orders={orders}
+                orders={orders.filter((o) => o.status !== '완료')}
                 onApply={(updates) => {
                   for (const u of updates) {
                     updateOrder(u.orderId, { trackingNumber: u.trackingNumber });
