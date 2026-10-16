@@ -24,12 +24,15 @@ import { SourceManager } from './components/SourceManager';
 import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
 import { ProductionSummary } from './components/ProductionSummary';
-import { orderHasProduct } from './production';
+import { isUnpaid, orderHasProduct } from './production';
+import { SalesReport } from './components/SalesReport';
+import { FilamentInventory } from './components/FilamentInventory';
+import { loadFilament, saveFilament, type FilamentState } from './filament';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms';
+type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament';
 type ListView = 'table' | 'card';
 
 const VIEW_STORAGE_KEY = 'cybertruck-list-view';
@@ -95,6 +98,7 @@ function emptyMessage(
 }
 
 export default function App() {
+  const [products, setProductsState] = useState<Product[]>(() => getProducts());
   const {
     orders,
     replaceOrders,
@@ -103,7 +107,7 @@ export default function App() {
     deleteOrder,
     setStatus,
     importOrders,
-  } = useOrders();
+  } = useOrders(products);
   const [filter, setFilter] = useState<StatusFilter>(loadStatusFilter);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('전체');
   const [period, setPeriod] = useState<PeriodRange>(loadPeriodFilter);
@@ -114,8 +118,6 @@ export default function App() {
   const [listView, setListView] = useState<ListView>(loadView);
 
   const [sources, setSourcesState] = useState<string[]>(() => getSources());
-  const [products, setProductsState] = useState<Product[]>(() => getProducts());
-
   // 시트(모달)가 열려 있는 동안 배경 스크롤 위치를 고정하고, 닫으면 원래 위치로 복원
   useLayoutEffect(() => {
     if (sheet === 'none') return;
@@ -175,7 +177,7 @@ export default function App() {
     onToast: showToast,
   });
 
-  const baseFiltered = useFilteredOrders(orders, filter, sourceFilter, query, period);
+  const baseFiltered = useFilteredOrders(orders, filter, sourceFilter, query, period, products);
   const [productFilter, setProductFilter] = useState<string | null>(null);
   const filtered = useMemo(
     () => (productFilter ? baseFiltered.filter((o) => orderHasProduct(o, productFilter, products)) : baseFiltered),
@@ -189,13 +191,21 @@ export default function App() {
       대기: 0,
       제작중: 0,
       완료: 0,
+      미입금: 0,
     };
     for (const o of orders) {
       c[o.status] += 1;
       if (o.status === '대기' || o.status === '제작중') c.작업중 += 1;
+      if (isUnpaid(o, products)) c.미입금 += 1;
     }
     return c;
-  }, [orders]);
+  }, [orders, products]);
+
+  const [filament, setFilamentState] = useState<FilamentState>(() => loadFilament());
+  const updateFilament = useCallback((next: FilamentState) => {
+    saveFilament(next);
+    setFilamentState(next);
+  }, []);
 
   const sourceOptions = useMemo(
     () => buildSourceFilterOptions(orders, sources),
@@ -253,6 +263,9 @@ export default function App() {
         status: values.status,
         priority: values.priority,
         trackingNumber: values.trackingNumber || undefined,
+        amount: values.amount,
+        paid: values.paid || undefined,
+        paidAt: values.paid ? values.paidAt : undefined,
       });
       showToast('저장됨');
     } else {
@@ -265,6 +278,9 @@ export default function App() {
         status: values.status,
         priority: values.priority,
         trackingNumber: values.trackingNumber || undefined,
+        amount: values.amount,
+        paid: values.paid || undefined,
+        paidAt: values.paid ? values.paidAt : undefined,
       });
       showToast('추가됨');
     }
@@ -290,6 +306,13 @@ export default function App() {
     onDelete: deleteOrder,
     onStatus: setStatus,
     copyText,
+    onTogglePaid: (id: string) => {
+      const target = orders.find((x) => x.id === id);
+      if (!target) return;
+      if (target.paid) updateOrder(id, { paid: undefined, paidAt: undefined });
+      else updateOrder(id, { paid: true, paidAt: Date.now() });
+      showToast(target.paid ? '미입금으로 변경' : '입금완료 처리');
+    },
     onTogglePriority: (id: string) => {
       const target = orders.find((x) => x.id === id);
       if (target) updateOrder(id, { priority: !target.priority });
@@ -310,6 +333,12 @@ export default function App() {
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('products')}>
             제품 관리
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={() => setSheet('sales')}>
+            매출 정리
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={() => setSheet('filament')}>
+            필라멘트
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('sms')}>
             문자 템플릿
@@ -399,6 +428,7 @@ export default function App() {
       <ProductionSummary
         orders={orders}
         products={products}
+        filament={filament}
         selected={productFilter}
         onSelect={setProductFilter}
       />
@@ -482,6 +512,32 @@ export default function App() {
               <ProductManager
                 products={products}
                 onChange={handleProductsChange}
+                onClose={() => setSheet('none')}
+              />
+            )}
+            {sheet === 'sales' && (
+              <SalesReport
+                orders={orders}
+                products={products}
+                period={period}
+                onPeriod={setPeriod}
+                onTogglePaid={sharedCardProps.onTogglePaid}
+                onMarkPaid={(ids) => {
+                  const now = Date.now();
+                  for (const id of ids) updateOrder(id, { paid: true, paidAt: now });
+                  showToast(`${ids.length}건 입금완료 처리`);
+                }}
+                onEdit={(o) => openEdit(o)}
+                onClose={() => setSheet('none')}
+              />
+            )}
+            {sheet === 'filament' && (
+              <FilamentInventory
+                orders={orders}
+                products={products}
+                state={filament}
+                onChange={updateFilament}
+                onOpenProducts={() => setSheet('products')}
                 onClose={() => setSheet('none')}
               />
             )}
