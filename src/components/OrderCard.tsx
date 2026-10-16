@@ -2,9 +2,10 @@ import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
-import { buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 import { PayBadge } from './PayBadge';
+import { formatWon, orderAmount } from '../production';
 
 interface Props {
   order: Order;
@@ -119,6 +120,12 @@ export function OrderCard({
           <div className="sms-group">
             <a className="btn btn-secondary" href={buildSmsLink(order.phone)}>
               문자
+            </a>
+            <a
+              className={`btn ${order.status === '대기' ? 'btn-receipt' : 'btn-ghost'}`}
+              href={buildSmsLink(order.phone, buildReceiptSmsBody(order, formatWon(orderAmount(order, products))))}
+            >
+              접수문자
             </a>
             <a
               className="btn btn-ghost"

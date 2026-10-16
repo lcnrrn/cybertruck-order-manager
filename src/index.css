@@ -1088,3 +1088,60 @@ a {
 .prod-others-title{font-weight:700}
 .prod-others ul{margin:4px 0 0;padding-left:18px}
 .prod-others em{opacity:.6;font-style:normal;font-size:12px}
+
+/* ── compact header + ☰ menu (no horizontal scroll) ── */
+.sticky-top .app-header {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.sticky-top .app-header .eyebrow { margin: 0; }
+.sticky-top .app-header h1 { font-size: 20px; }
+.sticky-top .header-actions {
+  width: auto;
+  flex-wrap: nowrap;
+  overflow: visible;
+  margin-left: auto;
+  gap: 6px;
+}
+.sticky-top .header-actions .btn { padding: 8px 10px; font-size: 14px; }
+.menu-btn { font-size: 20px !important; line-height: 1; min-width: 42px; }
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+.menu-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 84px;
+  padding: 10px 4px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.menu-tile:active { background: rgba(255, 255, 255, 0.12); }
+.menu-ico { font-size: 26px; }
+.menu-label { font-size: 13px; font-weight: 600; }
+@media (max-width: 340px) { .menu-grid { grid-template-columns: repeat(2, 1fr); } }
+.btn-receipt {
+  background: rgba(59, 130, 246, 0.18);
+  border: 1px solid #3b82f6;
+  color: #bfdbfe;
+}
+.prod-time {
+  font-size: 13px;
+  padding: 6px 12px;
+  opacity: 0.95;
+}
+.prod-time b { color: #fde68a; }
+.prod-settings { margin-bottom: 12px; }
+.backup-sec { margin-bottom: 18px; }
+.backup-sec h3 { font-size: 15px; margin: 0 0 4px; }
+.backup-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
