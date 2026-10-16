@@ -22,6 +22,10 @@ export interface Order {
   filamentG?: number;
   /** 필라멘트 차감 시각 (ms) */
   filamentAt?: number;
+  /** 완료 시 종류별 차감량(g) {filamentTypeId: g} */
+  filamentUse?: Record<string, number>;
+  /** 제품 구성별 필라멘트 종류 선택 {'제품명#순번': filamentTypeId} */
+  filamentPick?: Record<string, string>;
   createdAt: number;
   updatedAt: number;
 }

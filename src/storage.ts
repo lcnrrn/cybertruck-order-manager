@@ -46,6 +46,8 @@ export function normalizeOrder(raw: unknown): Order | null {
     paidAt: num(o.paidAt),
     filamentG: num(o.filamentG),
     filamentAt: num(o.filamentAt),
+    filamentUse: numMap(o.filamentUse),
+    filamentPick: strMap(o.filamentPick),
     createdAt,
     updatedAt,
   };
@@ -128,3 +130,19 @@ export function saveOrders(orders: Order[]): void {
     /* ignore quota / private mode */
   }
 }
+
+function numMap(v: unknown): Record<string, number> | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const out: Record<string, number> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) if (typeof x === 'number' && Number.isFinite(x)) out[k] = x;
+  return Object.keys(out).length ? out : undefined;
+}
+
+function strMap(v: unknown): Record<string, string> | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) if (typeof x === 'string' && x) out[k] = x;
+  return Object.keys(out).length ? out : undefined;
+}
+
+export { numMap, strMap };
