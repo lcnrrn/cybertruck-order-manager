@@ -4,22 +4,29 @@ import type { SourceFilter } from '../sources';
 import { loadOrders, saveOrders } from '../storage';
 import { orderTimestamp, resolvePeriodBounds } from '../period';
 import type { Product } from '../products';
-import { isUnpaid, orderGrams } from '../production';
+import { isUnpaid } from '../production';
+import { loadFilament, orderUseByType } from '../filament';
 
 /** 완료 전환 시 필라멘트 차감 기록, 완료 해제 시 되돌림 (중복 차감 방지) */
 function applyFilament(prev: Order, next: Order, catalog: Product[]): Order {
-  if (next.status === '완료' && prev.status !== '완료' && next.filamentG === undefined) {
-    const g = orderGrams(next, catalog);
-    if (g > 0) return { ...next, filamentG: g, filamentAt: Date.now() };
-    return next;
+  if (next.status === '완료' && prev.status !== '완료' && next.filamentG === undefined && !next.filamentUse) {
+    return withDeduction(next, catalog, Date.now());
   }
-  if (next.status !== '완료' && prev.status === '완료' && next.filamentG !== undefined) {
+  if (next.status !== '완료' && prev.status === '완료' && (next.filamentG !== undefined || next.filamentUse)) {
     const r = { ...next };
     delete r.filamentG;
     delete r.filamentAt;
+    delete r.filamentUse;
     return r;
   }
   return next;
+}
+
+function withDeduction(o: Order, catalog: Product[], now: number): Order {
+  const use = orderUseByType(o, catalog, loadFilament());
+  const g = Object.values(use).reduce((a, b) => a + b, 0);
+  if (g > 0) return { ...o, filamentG: g, filamentAt: now, filamentUse: use };
+  return o;
 }
 
 function uid(): string {
@@ -58,8 +65,7 @@ export function useOrders(products: Product[] = []) {
       updatedAt: now,
     };
     if (order.status === '완료') {
-      const g = orderGrams(order, productsRef.current);
-      if (g > 0) order = { ...order, filamentG: g, filamentAt: now };
+      order = withDeduction(order, productsRef.current, now);
     }
     setOrders((prev) => [order, ...prev]);
     return order;
@@ -71,6 +77,7 @@ export function useOrders(products: Product[] = []) {
         if (o.id !== id) return o;
         let next: Order = { ...o, ...patch, id: o.id, updatedAt: Date.now() };
         next = applyFilament(o, next, productsRef.current);
+        if ('filamentPick' in patch && !patch.filamentPick) delete next.filamentPick;
         for (const k of ['amount', 'paidAt'] as const) {
           if (k in patch && patch[k] === undefined) delete next[k];
         }

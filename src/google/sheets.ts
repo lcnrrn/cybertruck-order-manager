@@ -1,3 +1,4 @@
+import { numMap, strMap } from '../storage';
 import type { Order, OrderStatus } from '../types';
 import { isSampleOrderId, isSampleOnly } from '../storage';
 import { ORDERS_HEADERS, ORDERS_SHEET_NAME, getSheetId } from './config';
@@ -53,6 +54,9 @@ function orderToRow(o: Order): string[] {
     o.paidAt ? String(o.paidAt) : '',
     o.filamentG !== undefined ? String(o.filamentG) : '',
     o.filamentAt ? String(o.filamentAt) : '',
+    o.filamentUse || o.filamentPick
+      ? JSON.stringify({ u: o.filamentUse, p: o.filamentPick })
+      : '',
   ];
 }
 
@@ -84,7 +88,24 @@ function rowToOrder(row: string[]): Order | null {
     paidAt: optNum(row[13]),
     filamentG: optNum(row[14]),
     filamentAt: optNum(row[15]),
+    ...parseFilamentCol(row[16]),
   };
+}
+
+function parseFilamentCol(raw: string | undefined): Pick<Order, 'filamentUse' | 'filamentPick'> {
+  const t = String(raw ?? '').trim();
+  if (!t) return {};
+  try {
+    const j = JSON.parse(t) as { u?: unknown; p?: unknown };
+    const out: Pick<Order, 'filamentUse' | 'filamentPick'> = {};
+    const u = numMap(j.u);
+    const p = strMap(j.p);
+    if (u) out.filamentUse = u;
+    if (p) out.filamentPick = p;
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 function optNum(raw: string | undefined): number | undefined {
@@ -136,7 +157,7 @@ export async function ensureOrdersSheet(accessToken: string): Promise<void> {
 export async function pullOrders(accessToken: string): Promise<Order[]> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:P`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:Q`);
   const res = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}`);
   if (!res.ok) {
     throw new Error(`시트 읽기 실패: ${await readError(res)}`);
@@ -158,7 +179,7 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
 export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:P`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:Q`);
 
   const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}:clear`, {
     method: 'POST',

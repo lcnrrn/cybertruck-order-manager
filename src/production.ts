@@ -143,7 +143,8 @@ export function orderGrams(order: Order, catalog: Product[]): number {
   let sum = 0;
   for (const p of r.products) {
     const prod = catalog.find((c) => c.name === p.name);
-    sum += (prod?.grams || 0) * p.qty;
+    const g = prod?.filaments?.length ? prod.filaments.reduce((a, f) => a + (f.grams || 0), 0) : prod?.grams || 0;
+    sum += g * p.qty;
   }
   return sum;
 }

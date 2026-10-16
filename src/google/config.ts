@@ -21,6 +21,7 @@ export const ORDERS_HEADERS = [
   'paidAt',
   'filamentG',
   'filamentAt',
+  'filamentByType',
 ] as const;
 
 /** Built-in defaults for this user's deployment (public OAuth client id + their sheet). */
