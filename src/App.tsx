@@ -23,6 +23,8 @@ import { GoogleSettings } from './components/GoogleSettings';
 import { SourceManager } from './components/SourceManager';
 import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
+import { ProductionSummary } from './components/ProductionSummary';
+import { orderHasProduct } from './production';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
@@ -173,7 +175,12 @@ export default function App() {
     onToast: showToast,
   });
 
-  const filtered = useFilteredOrders(orders, filter, sourceFilter, query, period);
+  const baseFiltered = useFilteredOrders(orders, filter, sourceFilter, query, period);
+  const [productFilter, setProductFilter] = useState<string | null>(null);
+  const filtered = useMemo(
+    () => (productFilter ? baseFiltered.filter((o) => orderHasProduct(o, productFilter, products)) : baseFiltered),
+    [baseFiltered, productFilter, products],
+  );
 
   const counts = useMemo(() => {
     const c: Record<StatusFilter, number> = {
@@ -388,6 +395,13 @@ export default function App() {
       </div>
 
       </div>
+
+      <ProductionSummary
+        orders={orders}
+        products={products}
+        selected={productFilter}
+        onSelect={setProductFilter}
+      />
 
       <main className={listView === 'table' ? 'order-list-table' : 'order-list'}>
         {filtered.length === 0 ? (

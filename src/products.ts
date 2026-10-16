@@ -196,7 +196,7 @@ function isRequestPart(part: string): boolean {
 }
 
 /** Score how well an items fragment matches a catalog product name (0 = none). */
-function scoreCatalogMatch(part: string, catalogName: string): number {
+export function scoreCatalogMatch(part: string, catalogName: string): number {
   const cleaned = stripItemPrices(part).trim();
   if (!cleaned || isRequestPart(cleaned)) return 0;
 

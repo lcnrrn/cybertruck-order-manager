@@ -1057,3 +1057,23 @@ a {
   background: var(--bg);
   color: var(--text);
 }
+
+/* 만들 제품 요약 */
+.prod-summary{margin:8px 12px 4px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04);overflow:hidden}
+.prod-summary-head{display:flex;align-items:center;gap:8px;width:100%;padding:10px 12px;background:none;border:0;color:inherit;font:inherit;cursor:pointer;text-align:left}
+.prod-summary-title{font-weight:700;font-size:15px}
+.prod-summary-meta{flex:1;font-size:13px;opacity:.75}
+.prod-summary-caret{font-size:11px;opacity:.6}
+.prod-summary-filter{display:flex;justify-content:space-between;align-items:center;padding:6px 12px;font-size:13px;background:rgba(255,200,0,.12)}
+.prod-summary-filter button{background:none;border:1px solid currentColor;border-radius:8px;color:inherit;padding:2px 8px;font-size:12px}
+.prod-summary-body{padding:0 12px 12px}
+.prod-chips{display:flex;flex-wrap:wrap;gap:6px}
+.prod-chip{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 10px;border:1px solid;border-radius:999px;font-size:13px;cursor:pointer}
+.prod-chip.is-active{outline:2px solid #fff;outline-offset:1px}
+.prod-chip-qty{font-weight:800;font-size:15px;min-width:20px;text-align:center;background:rgba(0,0,0,.25);border-radius:999px;padding:0 6px}
+.prod-chip-split{font-size:11px;opacity:.8}
+.prod-others{margin-top:8px;padding:8px 10px;border:1px dashed rgba(255,255,255,.2);border-radius:10px;font-size:13px;cursor:pointer}
+.prod-others.is-active{outline:2px solid #fff}
+.prod-others-title{font-weight:700}
+.prod-others ul{margin:4px 0 0;padding-left:18px}
+.prod-others em{opacity:.6;font-style:normal;font-size:12px}
