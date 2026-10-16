@@ -136,7 +136,7 @@ export function useFilteredOrders(
       })
       .sort((a, b) => {
         if (a.priority !== b.priority) return a.priority ? -1 : 1;
-        return b.updatedAt - a.updatedAt;
+        return (b.createdAt || b.updatedAt) - (a.createdAt || a.updatedAt);
       });
   }, [orders, statusFilter, sourceFilter, query, period]);
 }

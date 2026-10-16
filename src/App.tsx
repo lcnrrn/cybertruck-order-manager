@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Order, PeriodRange, StatusFilter } from './types';
 import {
   FILTER_OPTIONS,
@@ -113,6 +113,23 @@ export default function App() {
 
   const [sources, setSourcesState] = useState<string[]>(() => getSources());
   const [products, setProductsState] = useState<Product[]>(() => getProducts());
+
+  // 시트(모달)가 열려 있는 동안 배경 스크롤 위치를 고정하고, 닫으면 원래 위치로 복원
+  useLayoutEffect(() => {
+    if (sheet === 'none') return;
+    const y = window.scrollY;
+    const body = document.body;
+    const prev = { position: body.style.position, top: body.style.top, width: body.style.width };
+    body.style.position = 'fixed';
+    body.style.top = `-${y}px`;
+    body.style.width = '100%';
+    return () => {
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      window.scrollTo(0, y);
+    };
+  }, [sheet]);
 
   useEffect(() => {
     try {
@@ -274,6 +291,7 @@ export default function App() {
 
   return (
     <div className={`app ${listView === 'table' ? 'view-table' : 'view-card'}`}>
+      <div className="sticky-top">
       <header className="app-header">
         <div>
           <p className="eyebrow">Cybertruck · 3D Print</p>
@@ -367,6 +385,8 @@ export default function App() {
             {orders.length > 0 ? ` · 전체 ${orders.length}건` : ''}
           </span>
         </div>
+      </div>
+
       </div>
 
       <main className={listView === 'table' ? 'order-list-table' : 'order-list'}>

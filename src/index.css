@@ -63,8 +63,52 @@ a {
 .app {
   max-width: 560px;
   margin: 0 auto;
-  padding: calc(12px + var(--safe-top)) 16px calc(24px + var(--safe-bottom));
+  padding: 0 16px calc(24px + var(--safe-bottom));
   min-height: 100dvh;
+}
+
+.sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+  margin: 0 -16px 12px;
+  padding: calc(8px + var(--safe-top)) 16px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app.view-table .sticky-top {
+  margin-left: -12px;
+  margin-right: -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.sticky-top .app-header {
+  margin-bottom: 8px;
+  gap: 6px;
+}
+
+.sticky-top .app-header h1 {
+  font-size: 22px;
+}
+
+.sticky-top .header-actions {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: 6px;
+  padding-top: 0;
+}
+
+.sticky-top .header-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.sticky-top .header-actions .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .app-header {
@@ -112,13 +156,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 12px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: linear-gradient(var(--bg) 85%, transparent);
-  padding-top: 4px;
-  padding-bottom: 8px;
+  margin-bottom: 0;
+  margin-top: 8px;
 }
 
 .search-input {
