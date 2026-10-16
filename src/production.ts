@@ -92,7 +92,6 @@ export function parseOrderProducts(
         text = whole;
       }
     }
-    if (qty > MAX_QTY) qty = 1;
     if (name === SHIPPING_NAME) continue;
     if (name) {
       const ex = products.find((p) => p.name === name);

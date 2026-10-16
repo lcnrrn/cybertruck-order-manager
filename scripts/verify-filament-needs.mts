@@ -12,7 +12,6 @@ assert.equal(q('안전벨트 클립 풀셋 5개')[0]?.qty, 1);
 assert.equal(q('휴대폰 마운트 거치대 x2')[0]?.qty, 2);
 assert.equal(q('견인고리 커버 2개')[0]?.qty, 2);
 assert.ok(q('일론머스크사진 판 9.5*10').every((p) => p.qty === 1));
-assert.ok(q('손잡이 커버 999개').every((p) => p.qty <= 50));
 
 const catalog = DEFAULT_PRODUCTS.map((p) => ({ ...p, filaments: [{ typeId: 'ft-b', grams: 50 }] }));
 const st = normalizeFilament({ types: [{ id: 'ft-b', material: 'PETG', color: 'BLACK' }] });
