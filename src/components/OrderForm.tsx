@@ -168,7 +168,14 @@ export function OrderForm({
         </label>
         {(selected.length > 0 || itemsNote.trim()) && (
           <p className="product-preview hint">
-            미리보기: {joinItems(orderedSelected(), itemsNote)}
+            미리보기:{' '}
+            {orderedSelected().join(' / ')}
+            {itemsNote.trim() ? (
+              <>
+                {selected.length > 0 ? ' / ' : ''}
+                <span className="product-preview-note">{itemsNote.trim()}</span>
+              </>
+            ) : null}
           </p>
         )}
       </fieldset>

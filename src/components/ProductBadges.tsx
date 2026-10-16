@@ -26,9 +26,13 @@ export function ProductBadges({ items, products, className }: Props) {
     return <span className={className}>{raw}</span>;
   }
 
-  // If nothing matched catalog, keep plain text
+  // Nothing matched catalog — treat whole leftover as note (red, larger)
   if (selected.length === 0) {
-    return <span className={className}>{raw}</span>;
+    return (
+      <span className={className}>
+        <span className="product-badge-note">{note || raw}</span>
+      </span>
+    );
   }
 
   return (
