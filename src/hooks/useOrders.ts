@@ -1,15 +1,33 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Order, OrderStatus, PeriodRange, StatusFilter } from '../types';
 import type { SourceFilter } from '../sources';
 import { loadOrders, saveOrders } from '../storage';
 import { orderTimestamp, resolvePeriodBounds } from '../period';
+import type { Product } from '../products';
+import { isUnpaid, orderGrams } from '../production';
+
+/** 완료 전환 시 필라멘트 차감 기록, 완료 해제 시 되돌림 (중복 차감 방지) */
+function applyFilament(prev: Order, next: Order, catalog: Product[]): Order {
+  if (next.status === '완료' && prev.status !== '완료' && next.filamentG === undefined) {
+    const g = orderGrams(next, catalog);
+    if (g > 0) return { ...next, filamentG: g, filamentAt: Date.now() };
+    return next;
+  }
+  if (next.status !== '완료' && prev.status === '완료' && next.filamentG !== undefined) {
+    const r = { ...next };
+    delete r.filamentG;
+    delete r.filamentAt;
+    return r;
+  }
+  return next;
+}
 
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function matchesStatus(status: OrderStatus, filter: StatusFilter): boolean {
-  if (filter === '전체') return true;
+  if (filter === '전체' || filter === '미입금') return true;
   if (filter === '작업중') return status === '대기' || status === '제작중';
   return status === filter;
 }
@@ -18,8 +36,10 @@ function normalizeSearch(s: string): string {
   return s.toLowerCase().replace(/[-\s]/g, '');
 }
 
-export function useOrders() {
+export function useOrders(products: Product[] = []) {
   const [orders, setOrders] = useState<Order[]>(() => loadOrders());
+  const productsRef = useRef(products);
+  productsRef.current = products;
 
   useEffect(() => {
     saveOrders(orders);
@@ -31,12 +51,16 @@ export function useOrders() {
 
   const addOrder = useCallback((data: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
     const now = Date.now();
-    const order: Order = {
+    let order: Order = {
       ...data,
       id: uid(),
       createdAt: now,
       updatedAt: now,
     };
+    if (order.status === '완료') {
+      const g = orderGrams(order, productsRef.current);
+      if (g > 0) order = { ...order, filamentG: g, filamentAt: now };
+    }
     setOrders((prev) => [order, ...prev]);
     return order;
   }, []);
@@ -45,7 +69,15 @@ export function useOrders() {
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== id) return o;
-        const next: Order = { ...o, ...patch, id: o.id, updatedAt: Date.now() };
+        let next: Order = { ...o, ...patch, id: o.id, updatedAt: Date.now() };
+        next = applyFilament(o, next, productsRef.current);
+        for (const k of ['amount', 'paidAt'] as const) {
+          if (k in patch && patch[k] === undefined) delete next[k];
+        }
+        if ('paid' in patch && !patch.paid) {
+          delete next.paid;
+          delete next.paidAt;
+        }
         // empty trackingNumber clears the field
         if ('trackingNumber' in patch) {
           const tn = patch.trackingNumber?.trim();
@@ -80,6 +112,7 @@ export function useOrders() {
       status: p.status || '대기',
       priority: p.priority ?? false,
       trackingNumber: p.trackingNumber,
+      amount: p.amount,
       createdAt: now + i,
       updatedAt: now + i,
     }));
@@ -104,6 +137,7 @@ export function useFilteredOrders(
   sourceFilter: SourceFilter,
   query: string,
   period: PeriodRange,
+  products: Product[] = [],
 ) {
   return useMemo(() => {
     const q = normalizeSearch(query.trim());
@@ -111,6 +145,7 @@ export function useFilteredOrders(
 
     return orders
       .filter((o) => matchesStatus(o.status, statusFilter))
+      .filter((o) => statusFilter !== '미입금' || isUnpaid(o, products))
       .filter((o) => {
         if (sourceFilter === '전체') return true;
         return (o.group || '').trim() === sourceFilter;
@@ -129,6 +164,8 @@ export function useFilteredOrders(
           o.items,
           o.group || '',
           o.trackingNumber || '',
+          o.paid ? '입금완료' : isUnpaid(o, products) ? '미입금' : '',
+          o.amount !== undefined ? String(o.amount) : '',
         ]
           .map(normalizeSearch)
           .join(' ');
@@ -138,5 +175,5 @@ export function useFilteredOrders(
         if (a.priority !== b.priority) return a.priority ? -1 : 1;
         return (b.createdAt || b.updatedAt) - (a.createdAt || a.updatedAt);
       });
-  }, [orders, statusFilter, sourceFilter, query, period]);
+  }, [orders, statusFilter, sourceFilter, query, period, products]);
 }

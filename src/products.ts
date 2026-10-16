@@ -9,6 +9,10 @@ export type ProductColor = {
 export type Product = {
   name: string;
   color: ProductColor;
+  /** 판매가(원) */
+  price?: number;
+  /** 필라멘트 소모량(g) / 1개 */
+  grams?: number;
 };
 
 /** Dark-theme-friendly swatch palette (~12) for product chips. */
@@ -80,16 +84,23 @@ export function normalizeProducts(list: unknown): Product[] | null {
   for (const item of list) {
     let name = '';
     let color: ProductColor | null = null;
+    let price: number | undefined;
+    let grams: number | undefined;
     if (typeof item === 'string') {
       name = item.trim();
     } else if (item && typeof item === 'object') {
       const o = item as Record<string, unknown>;
       if (typeof o.name === 'string') name = o.name.trim();
       if (isColor(o.color)) color = o.color;
+      if (typeof o.price === 'number' && Number.isFinite(o.price) && o.price >= 0) price = o.price;
+      if (typeof o.grams === 'number' && Number.isFinite(o.grams) && o.grams >= 0) grams = o.grams;
     }
     if (!name || seen.has(name)) continue;
     seen.add(name);
-    out.push({ name, color: color ?? colorForName(name, i) });
+    const p: Product = { name, color: color ?? colorForName(name, i) };
+    if (price !== undefined) p.price = price;
+    if (grams !== undefined) p.grams = grams;
+    out.push(p);
     i += 1;
   }
   return out.length > 0 ? out : null;

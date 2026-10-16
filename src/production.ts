@@ -114,3 +114,46 @@ export function buildProductionSummary(orders: Order[], catalog: Product[]): Pro
   const total = rows.reduce((s, r) => s + r.total, 0) + others.reduce((s, x) => s + x.qty, 0);
   return { rows, others, total, orderCount };
 }
+
+/** 제품 판매가 × 수량 자동 금액 */
+export function autoOrderAmount(order: Order, catalog: Product[]): number {
+  const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
+  let sum = 0;
+  for (const p of r.products) {
+    const prod = catalog.find((c) => c.name === p.name);
+    sum += (prod?.price || 0) * p.qty;
+  }
+  const ship = catalog.find((c) => c.name === SHIPPING_NAME);
+  if (ship?.price && /택배/.test(order.items || '')) sum += ship.price;
+  return sum;
+}
+
+/** 실제 금액: 직접 입력값 우선, 없으면 자동 계산 */
+export function orderAmount(order: Order, catalog: Product[]): number {
+  return order.amount !== undefined ? order.amount : autoOrderAmount(order, catalog);
+}
+
+export function isUnpaid(order: Order, catalog: Product[]): boolean {
+  return !order.paid && orderAmount(order, catalog) > 0;
+}
+
+/** 주문 1건 필라멘트 소모량(g) */
+export function orderGrams(order: Order, catalog: Product[]): number {
+  const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
+  let sum = 0;
+  for (const p of r.products) {
+    const prod = catalog.find((c) => c.name === p.name);
+    sum += (prod?.grams || 0) * p.qty;
+  }
+  return sum;
+}
+
+export function pendingGrams(orders: Order[], catalog: Product[]): number {
+  return orders
+    .filter((o) => o.status === '대기' || o.status === '제작중')
+    .reduce((s, o) => s + orderGrams(o, catalog), 0);
+}
+
+export function formatWon(n: number): string {
+  return `${Math.round(n).toLocaleString('ko-KR')}원`;
+}
