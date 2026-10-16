@@ -80,6 +80,19 @@ export function ProductManager({ products, onChange, onClose }: Props) {
     setEditingColorFor(null);
   }
 
+  function setNumber(name: string, key: 'price' | 'grams', raw: string) {
+    const digits = raw.replace(/[^\d.]/g, '');
+    onChange(
+      products.map((p) => {
+        if (p.name !== name) return p;
+        const next = { ...p };
+        if (digits === '') delete next[key];
+        else next[key] = Number(digits);
+        return next;
+      }),
+    );
+  }
+
   function move(index: number, dir: -1 | 1) {
     const j = index + dir;
     if (j < 0 || j >= products.length) return;
@@ -130,6 +143,7 @@ export function ProductManager({ products, onChange, onClose }: Props) {
       <h2 className="sheet-title">제품 관리</h2>
       <p className="hint">
         주문 내용에 쓸 제품 목록을 추가·이름 변경·색상·삭제·순서 변경할 수 있습니다.
+        제품마다 <b>판매가(1개)</b>와 <b>필라멘트 소모량(1개, g)</b>을 입력하면 주문 금액과 필라멘트 차감이 자동 계산됩니다.
         이 기기에만 저장됩니다. 삭제해도 기존 주문의 내용 문자열은 유지됩니다.
       </p>
 
@@ -223,6 +237,28 @@ export function ProductManager({ products, onChange, onClose }: Props) {
                 >
                   삭제
                 </button>
+              </div>
+              <div className="product-numbers">
+                <label>
+                  <span>판매가(원)</span>
+                  <input
+                    inputMode="numeric"
+                    defaultValue={product.price ?? ''}
+                    placeholder="0"
+                    onBlur={(e) => setNumber(name, 'price', e.target.value)}
+                    aria-label={`${name} 판매가`}
+                  />
+                </label>
+                <label>
+                  <span>필라멘트(g)</span>
+                  <input
+                    inputMode="decimal"
+                    defaultValue={product.grams ?? ''}
+                    placeholder="0"
+                    onBlur={(e) => setNumber(name, 'grams', e.target.value)}
+                    aria-label={`${name} 필라멘트 소모량`}
+                  />
+                </label>
               </div>
               {isColorEdit && (
                 <div className="product-color-edit-row">

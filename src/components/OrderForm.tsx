@@ -7,6 +7,13 @@ import {
   type Product,
 } from '../products';
 import { SourcePicker } from './SourcePicker';
+import { autoOrderAmount, formatWon, orderGrams } from '../production';
+
+function toDateInput(ms?: number): string {
+  const d = new Date(ms || Date.now());
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export type OrderFormValues = {
   name: string;
@@ -17,6 +24,10 @@ export type OrderFormValues = {
   status: OrderStatus;
   priority: boolean;
   trackingNumber: string;
+  /** 직접 입력 금액 — undefined = 자동 */
+  amount?: number;
+  paid: boolean;
+  paidAt?: number;
 };
 
 interface Props {
@@ -36,6 +47,7 @@ const empty: OrderFormValues = {
   status: '대기',
   priority: false,
   trackingNumber: '',
+  paid: false,
 };
 
 export function OrderForm({
@@ -48,6 +60,7 @@ export function OrderForm({
   const [values, setValues] = useState<OrderFormValues>(empty);
   const [selected, setSelected] = useState<string[]>([]);
   const [itemsNote, setItemsNote] = useState('');
+  const [amountText, setAmountText] = useState('');
 
   useEffect(() => {
     if (initial) {
@@ -60,7 +73,11 @@ export function OrderForm({
         status: initial.status,
         priority: initial.priority,
         trackingNumber: initial.trackingNumber || '',
+        amount: initial.amount,
+        paid: Boolean(initial.paid),
+        paidAt: initial.paidAt,
       });
+      setAmountText(initial.amount !== undefined ? String(initial.amount) : '');
       const parsed = parseItemsAgainstCatalog(initial.items, products);
       setSelected(parsed.selected);
       setItemsNote(parsed.note);
@@ -68,6 +85,7 @@ export function OrderForm({
       setValues(empty);
       setSelected([]);
       setItemsNote('');
+      setAmountText('');
     }
   }, [initial, products]);
 
@@ -95,8 +113,11 @@ export function OrderForm({
       return;
     }
     const items = joinItems(orderedSelected(), itemsNote);
+    const amtRaw = amountText.replace(/[^\d]/g, '');
     onSubmit({
       ...values,
+      amount: amtRaw ? Number(amtRaw) : undefined,
+      paidAt: values.paid ? values.paidAt || Date.now() : undefined,
       name: values.name.trim(),
       items,
       address: values.address.trim(),
@@ -231,6 +252,60 @@ export function OrderForm({
           </button>
         ) : null}
       </label>
+
+      <fieldset className="field money-field">
+        <legend>금액 · 입금</legend>
+        {(() => {
+          const preview = { items: joinItems(orderedSelected(), itemsNote) } as Order;
+          const auto = autoOrderAmount(preview, products);
+          const g = orderGrams(preview, products);
+          return (
+            <p className="hint">
+              자동 계산: <strong>{formatWon(auto)}</strong>
+              {g > 0 ? ` · 필라멘트 약 ${g.toLocaleString('ko-KR')}g` : ''}
+              {auto === 0 ? ' (제품 관리에서 판매가를 입력하면 자동 계산돼요)' : ''}
+            </p>
+          );
+        })()}
+        <label className="field">
+          <span>실제 금액 (비우면 자동 · 할인/배송비 반영 시 입력)</span>
+          <input
+            inputMode="numeric"
+            value={amountText}
+            onChange={(e) => setAmountText(e.target.value.replace(/[^\d,]/g, ''))}
+            placeholder="자동"
+          />
+        </label>
+        <div className="status-row">
+          <button
+            type="button"
+            className={`status-btn pay-btn unpaid ${!values.paid ? 'active' : ''}`}
+            onClick={() => set('paid', false)}
+          >
+            미입금
+          </button>
+          <button
+            type="button"
+            className={`status-btn pay-btn paid ${values.paid ? 'active' : ''}`}
+            onClick={() => setValues((v) => ({ ...v, paid: true, paidAt: v.paidAt || Date.now() }))}
+          >
+            입금완료
+          </button>
+        </div>
+        {values.paid && (
+          <label className="field">
+            <span>입금일</span>
+            <input
+              type="date"
+              value={toDateInput(values.paidAt)}
+              onChange={(e) => {
+                const t = e.target.value ? new Date(`${e.target.value}T12:00:00`).getTime() : Date.now();
+                set('paidAt', t);
+              }}
+            />
+          </label>
+        )}
+      </fieldset>
 
       <fieldset className="field">
         <legend>상태</legend>

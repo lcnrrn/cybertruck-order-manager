@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react';
 import type { Order } from '../types';
 import { getProductColor, type Product } from '../products';
-import { buildProductionSummary } from '../production';
+import { buildProductionSummary, pendingGrams } from '../production';
+import { currentStock, type FilamentState } from '../filament';
 
 const COLLAPSE_KEY = 'cybertruck-production-collapsed';
 
 interface Props {
   orders: Order[];
   products: Product[];
+  filament?: FilamentState;
   selected: string | null;
   onSelect: (name: string | null) => void;
 }
 
-export function ProductionSummary({ orders, products, selected, onSelect }: Props) {
+export function ProductionSummary({ orders, products, filament, selected, onSelect }: Props) {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -32,6 +34,8 @@ export function ProductionSummary({ orders, products, selected, onSelect }: Prop
     }
   };
 
+  const needG = useMemo(() => pendingGrams(orders, products), [orders, products]);
+  const stock = filament ? currentStock(filament, orders) : null;
   if (summary.orderCount === 0) return null;
   const pick = (n: string) => onSelect(selected === n ? null : n);
 
@@ -41,6 +45,7 @@ export function ProductionSummary({ orders, products, selected, onSelect }: Prop
         <span className="prod-summary-title">🛠 만들 제품</span>
         <span className="prod-summary-meta">
           총 {summary.total}개 · 주문 {summary.orderCount}건
+          {needG > 0 ? ` · 필라멘트 ${needG.toLocaleString('ko-KR')}g` : ''}
         </span>
         <span className="prod-summary-caret">{collapsed ? '▼' : '▲'}</span>
       </button>
@@ -48,6 +53,12 @@ export function ProductionSummary({ orders, products, selected, onSelect }: Prop
         <div className="prod-summary-filter">
           <span>‘{selected}’ 포함 주문만 보는 중</span>
           <button type="button" onClick={() => onSelect(null)}>해제 ✕</button>
+        </div>
+      )}
+      {!collapsed && needG > 0 && stock !== null && filament && filament.entries.length > 0 && (
+        <div className={`prod-filament ${stock - needG < filament.threshold ? 'warn' : ''}`}>
+          🧵 필요 {needG.toLocaleString('ko-KR')}g · 재고 {stock.toLocaleString('ko-KR')}g
+          {stock < needG ? ' — 재고 부족!' : stock - needG < filament.threshold ? ' — 제작 후 기준 이하, 주문 필요' : ''}
         </div>
       )}
       {!collapsed && (
