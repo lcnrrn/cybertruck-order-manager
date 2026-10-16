@@ -31,8 +31,21 @@ import { SETTINGS_APPLIED_EVENT } from './settingsMeta';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
+import { BackupPanel } from './components/BackupPanel';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament';
+type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup';
+
+const MENU_ITEMS: { id: Sheet; icon: string; label: string }[] = [
+  { id: 'import', icon: '📥', label: '가져오기' },
+  { id: 'tracking', icon: '📮', label: '송장 등록' },
+  { id: 'products', icon: '📦', label: '제품 관리' },
+  { id: 'sources', icon: '🧭', label: '경로 관리' },
+  { id: 'sales', icon: '💰', label: '매출 정리' },
+  { id: 'filament', icon: '🧵', label: '필라멘트' },
+  { id: 'sms', icon: '💬', label: '문자 템플릿' },
+  { id: 'backup', icon: '💾', label: '데이터 백업' },
+  { id: 'google', icon: '⚙️', label: '구글 설정' },
+];
 
 function loadStatusFilter(): StatusFilter {
   try {
@@ -327,29 +340,14 @@ export default function App() {
           <h1>주문 관리</h1>
         </div>
         <div className="header-actions">
-          <button type="button" className="btn btn-ghost" onClick={() => setSheet('sources')}>
-            경로 관리
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={() => setSheet('products')}>
-            제품 관리
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={() => setSheet('sales')}>
-            매출 정리
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={() => setSheet('filament')}>
-            필라멘트
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={() => setSheet('sms')}>
-            문자 템플릿
-          </button>
-          <button type="button" className="btn btn-ghost" onClick={() => setSheet('import')}>
-            가져오기
-          </button>
           <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}>
             송장 등록
           </button>
           <button type="button" className="btn btn-primary" onClick={openNew}>
             + 새 주문
+          </button>
+          <button type="button" className="btn btn-ghost menu-btn" onClick={() => setSheet('menu')} aria-label="메뉴 열기">
+            ☰
           </button>
         </div>
       </header>
@@ -446,6 +444,32 @@ export default function App() {
             role="dialog"
             aria-modal="true"
           >
+            {sheet === 'menu' && (
+              <div className="sheet-body">
+                <h2 className="sheet-title">메뉴</h2>
+                <div className="menu-grid">
+                  {MENU_ITEMS.map((m) => (
+                    <button key={m.id} type="button" className="menu-tile" onClick={() => setSheet(m.id)}>
+                      <span className="menu-ico" aria-hidden>{m.icon}</span>
+                      <span className="menu-label">{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="form-actions">
+                  <button type="button" className="btn btn-ghost" onClick={() => setSheet('none')}>닫기</button>
+                </div>
+              </div>
+            )}
+            {sheet === 'backup' && (
+              <BackupPanel
+                orders={orders}
+                products={products}
+                period={period}
+                onRestore={replaceOrders}
+                onToast={showToast}
+                onClose={() => setSheet('none')}
+              />
+            )}
             {sheet === 'form' && (
               <div className="sheet-body">
                 <OrderForm
