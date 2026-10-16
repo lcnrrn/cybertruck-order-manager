@@ -12,6 +12,8 @@ import {
   pullOrders,
   pushOrders,
 } from '../google/sheets';
+import { syncSettings } from '../google/settingsSync';
+import { SETTINGS_CHANGED_EVENT } from '../settingsMeta';
 
 const LS_SIGNED = 'cybertruck-google-signed';
 const LS_EMAIL = 'cybertruck-google-email';
@@ -105,6 +107,9 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
         replaceOrdersRef.current(merged);
         const pushed = await guardedPush(token, merged);
         initialSyncDoneRef.current = true;
+        void syncSettings(token).catch(() => {
+          /* settings sync is best-effort */
+        });
         setStatus(pushed ? 'idle' : 'error');
         if (pushed) onToastRef.current?.(toastMsg || '동기화 완료');
       } catch (e) {
@@ -137,6 +142,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       if (JSON.stringify(merged) !== JSON.stringify(remote)) {
         await guardedPush(token, merged);
       }
+      await syncSettings(token).catch(() => false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       if (/401|invalid|expired|UNAUTHENTICATED/i.test(msg)) {
@@ -292,6 +298,26 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
     };
   }, [orders, accessToken, guardedPush]);
+
+  // Debounced settings push (products, sources, SMS, filament) after local edits
+  useEffect(() => {
+    let timer: number | null = null;
+    const onChanged = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const token = tokenRef.current;
+        if (!token || !initialSyncDoneRef.current || !navigator.onLine) return;
+        void syncSettings(token).catch(() => {
+          /* retried on next poll */
+        });
+      }, DEBOUNCE_MS);
+    };
+    window.addEventListener(SETTINGS_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(SETTINGS_CHANGED_EVENT, onChanged);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, []);
 
   // Silent re-auth on load if previously signed in
   useEffect(() => {

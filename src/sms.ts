@@ -5,6 +5,8 @@ export type SmsTemplateBodies = {
   발송: string;
 };
 
+import { markSettingChanged } from './settingsMeta';
+
 const LS_SMS_TEMPLATES = 'cybertruck-sms-templates-v1';
 
 /** Built-in defaults. 발송 may include {{등기번호}} for tracking injection. */
@@ -75,6 +77,7 @@ export function setSmsTemplates(bodies: SmsTemplateBodies): void {
   };
   try {
     localStorage.setItem(LS_SMS_TEMPLATES, JSON.stringify(next));
+    markSettingChanged('sms');
   } catch {
     /* ignore */
   }
@@ -83,6 +86,7 @@ export function setSmsTemplates(bodies: SmsTemplateBodies): void {
 export function resetSmsTemplates(): void {
   try {
     localStorage.removeItem(LS_SMS_TEMPLATES);
+    markSettingChanged('sms');
   } catch {
     /* ignore */
   }

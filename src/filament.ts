@@ -1,5 +1,7 @@
 import type { Order } from './types';
 
+import { markSettingChanged } from './settingsMeta';
+
 const KEY = 'cybertruck-filament-v1';
 
 export interface FilamentEntry {
@@ -35,6 +37,7 @@ export function loadFilament(): FilamentState {
 export function saveFilament(s: FilamentState): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
+    markSettingChanged('filament');
   } catch {
     /* ignore */
   }

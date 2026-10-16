@@ -28,6 +28,7 @@ import { isUnpaid, orderHasProduct } from './production';
 import { SalesReport } from './components/SalesReport';
 import { FilamentInventory } from './components/FilamentInventory';
 import { loadFilament, saveFilament, type FilamentState } from './filament';
+import { SETTINGS_APPLIED_EVENT } from './settingsMeta';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
@@ -205,6 +206,17 @@ export default function App() {
   const updateFilament = useCallback((next: FilamentState) => {
     saveFilament(next);
     setFilamentState(next);
+  }, []);
+
+  // Settings pulled from Google Sheets (other device) → reload local state
+  useEffect(() => {
+    const onApplied = () => {
+      setProductsState(getProducts());
+      setSourcesState(getSources());
+      setFilamentState(loadFilament());
+    };
+    window.addEventListener(SETTINGS_APPLIED_EVENT, onApplied);
+    return () => window.removeEventListener(SETTINGS_APPLIED_EVENT, onApplied);
   }, []);
 
   const sourceOptions = useMemo(
