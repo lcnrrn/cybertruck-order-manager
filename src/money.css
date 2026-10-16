@@ -35,3 +35,30 @@
 .filament-history .neg { color:#f87171; } .filament-history .pos { color:#4ade80; }
 .prod-filament { margin:6px 0; padding:6px 10px; border-radius:8px; font-size:13px; background:#1e293b; }
 .prod-filament.warn { background:#713f12; color:#fff; font-weight:700; }
+.prod-filament-title { font-weight:700; margin-bottom:4px; }
+.prod-filament-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; font-weight:400; }
+.prod-filament-list li { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.prod-filament-list li.short { color:#fecaca; font-weight:700; }
+.prod-filament-list li.low { color:#fde68a; }
+.fil-dot { display:inline-block; width:14px; height:14px; border-radius:50%; border:1px solid #94a3b8; flex:0 0 auto; }
+.fil-name { font-weight:700; }
+.fil-num { opacity:.95; }
+.fil-cards { display:flex; flex-direction:column; gap:8px; margin:8px 0; }
+.fil-card { border:1px solid #334155; border-radius:12px; padding:10px 12px; background:#0f172a; text-align:left; color:inherit; width:100%; font:inherit; }
+.fil-card.sel { border-color:#3b82f6; box-shadow:0 0 0 2px #3b82f655; }
+.fil-card.bad { border-color:#dc2626; }
+.fil-card-head { display:flex; align-items:center; gap:8px; font-size:16px; }
+.fil-card-head strong { margin-left:auto; font-size:18px; }
+.fil-card-meta { font-size:13px; opacity:.85; margin-top:4px; }
+.fil-card-warn { font-size:13px; color:#fca5a5; font-weight:700; margin-top:4px; }
+.fil-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:6px 0; }
+.fil-row select, .fil-row input { min-height:40px; font-size:16px; border-radius:8px; padding:4px 8px; background:#0b1220; color:inherit; border:1px solid #334155; }
+.fil-row input[type=color] { width:44px; padding:2px; }
+.fil-row .grow { flex:1 1 120px; min-width:0; }
+.fil-tags { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+.fil-tag { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:999px; border:1px solid #475569; font-size:14px; }
+.fil-tag button { background:none; border:0; color:#f87171; font-size:16px; padding:0 2px; }
+.fil-parts { display:flex; flex-direction:column; gap:4px; width:100%; }
+.fil-pick { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
+.fil-pick label { display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:14px; }
+.fil-pick select { min-height:40px; font-size:16px; border-radius:8px; background:#0b1220; color:inherit; border:1px solid #334155; flex:1 1 160px; }

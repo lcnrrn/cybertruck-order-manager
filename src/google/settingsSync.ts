@@ -106,8 +106,11 @@ function writeLocal(key: SettingKey, e: Entry): void {
 }
 
 interface FilamentLike {
-  entries?: { id?: string; at?: number }[];
+  entries?: { id?: string; at?: number; typeId?: string }[];
   threshold?: number;
+  types?: { id?: string }[];
+  materials?: string[];
+  colors?: string[];
 }
 
 function parseFil(json: string): FilamentLike {
@@ -124,14 +127,27 @@ function mergeFilament(local: Entry | null, remote: Entry | null): Entry | null 
   if (!remote) return local;
   const l = parseFil(local.json);
   const r = parseFil(remote.json);
-  const byId = new Map<string, { id?: string; at?: number }>();
+  const byId = new Map<string, { id?: string; at?: number; typeId?: string }>();
   for (const e of [...(r.entries || []), ...(l.entries || [])]) {
     if (e && e.id && !byId.has(e.id)) byId.set(e.id, e);
   }
   const entries = Array.from(byId.values()).sort((a, b) => (a.at || 0) - (b.at || 0));
   const newer = local.updatedAt > remote.updatedAt ? l : r;
+  const older = newer === l ? r : l;
   const threshold = typeof newer.threshold === 'number' ? newer.threshold : (l.threshold ?? r.threshold ?? 1000);
-  return { json: JSON.stringify({ entries, threshold }), updatedAt: Math.max(local.updatedAt, remote.updatedAt) };
+  // types: newer list wins (LWW); keep older-only types still referenced by entries so nothing is orphaned
+  const types = [...(newer.types || older.types || [])];
+  const used = new Set(entries.map((e) => e.typeId).filter(Boolean));
+  for (const t of older.types || []) {
+    if (t && t.id && used.has(t.id) && !types.some((x) => x && x.id === t.id)) types.push(t);
+  }
+  const out: FilamentLike = { entries, threshold };
+  if (types.length) out.types = types;
+  const materials = newer.materials || older.materials;
+  const colors = newer.colors || older.colors;
+  if (materials) out.materials = materials;
+  if (colors) out.colors = colors;
+  return { json: JSON.stringify(out), updatedAt: Math.max(local.updatedAt, remote.updatedAt) };
 }
 
 let running: Promise<boolean> | null = null;

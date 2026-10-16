@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Order } from '../types';
 import { getProductColor, type Product } from '../products';
 import { buildProductionSummary, pendingGrams } from '../production';
-import { currentStock, type FilamentState } from '../filament';
+import { pendingByType, stockByType, swatchOf, thresholdOf, typeLabel, type FilamentState } from '../filament';
 
 const COLLAPSE_KEY = 'cybertruck-production-collapsed';
 
@@ -35,7 +35,21 @@ export function ProductionSummary({ orders, products, filament, selected, onSele
   };
 
   const needG = useMemo(() => pendingGrams(orders, products), [orders, products]);
-  const stock = filament ? currentStock(filament, orders) : null;
+  const perType = useMemo(() => {
+    if (!filament) return [];
+    const need = pendingByType(orders, products, filament);
+    const stock = stockByType(filament, orders);
+    return Object.entries(need)
+      .filter(([, g]) => g > 0)
+      .map(([id, g]) => {
+        const t = filament.types.find((x) => x.id === id);
+        const st = stock[id] || 0;
+        const th = thresholdOf(filament, id);
+        return { id, t, need: g, stock: st, short: st < g, low: st - g < th };
+      })
+      .sort((a, b) => Number(b.short) - Number(a.short) || b.need - a.need);
+  }, [orders, products, filament]);
+  const anyShort = perType.some((x) => x.short);
   if (summary.orderCount === 0) return null;
   const pick = (n: string) => onSelect(selected === n ? null : n);
 
@@ -55,10 +69,21 @@ export function ProductionSummary({ orders, products, filament, selected, onSele
           <button type="button" onClick={() => onSelect(null)}>해제 ✕</button>
         </div>
       )}
-      {!collapsed && needG > 0 && stock !== null && filament && filament.entries.length > 0 && (
-        <div className={`prod-filament ${stock - needG < filament.threshold ? 'warn' : ''}`}>
-          🧵 필요 {needG.toLocaleString('ko-KR')}g · 재고 {stock.toLocaleString('ko-KR')}g
-          {stock < needG ? ' — 재고 부족!' : stock - needG < filament.threshold ? ' — 제작 후 기준 이하, 주문 필요' : ''}
+      {!collapsed && perType.length > 0 && (
+        <div className={`prod-filament ${anyShort ? 'warn' : ''}`}>
+          <div className="prod-filament-title">🧵 필요한 필라멘트{anyShort ? ' — 재고 부족!' : ''}</div>
+          <ul className="prod-filament-list">
+            {perType.map((x) => (
+              <li key={x.id} className={x.short ? 'short' : x.low ? 'low' : ''}>
+                <i className="fil-dot" style={{ background: swatchOf(x.t) }} />
+                <span className="fil-name">{typeLabel(x.t)}</span>
+                <span className="fil-num">
+                  필요 {x.need.toLocaleString('ko-KR')}g · 재고 {Math.round(x.stock).toLocaleString('ko-KR')}g
+                  {x.short ? ` · ${Math.round(x.need - x.stock).toLocaleString('ko-KR')}g 부족` : x.low ? ' · 제작 후 기준 이하' : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {!collapsed && (
