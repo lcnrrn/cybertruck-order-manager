@@ -278,6 +278,7 @@ export default function App() {
         amount: values.amount,
         paid: values.paid || undefined,
         paidAt: values.paid ? values.paidAt : undefined,
+        filamentPick: values.filamentPick,
       });
       showToast('저장됨');
     } else {
@@ -293,6 +294,7 @@ export default function App() {
         amount: values.amount,
         paid: values.paid || undefined,
         paidAt: values.paid ? values.paidAt : undefined,
+        filamentPick: values.filamentPick,
       });
       showToast('추가됨');
     }
@@ -485,6 +487,7 @@ export default function App() {
                   initial={editing}
                   sources={sources}
                   products={products}
+                  filament={filament}
                   onSubmit={handleFormSubmit}
                   onCancel={() => {
                     setSheet('none');
@@ -523,6 +526,8 @@ export default function App() {
             {sheet === 'products' && (
               <ProductManager
                 products={products}
+                filament={filament}
+                onOpenFilament={() => setSheet('filament')}
                 onChange={handleProductsChange}
                 onClose={() => setSheet('none')}
               />

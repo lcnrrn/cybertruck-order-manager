@@ -8,6 +8,7 @@ import {
 } from '../products';
 import { SourcePicker } from './SourcePicker';
 import { autoOrderAmount, formatWon, orderGrams } from '../production';
+import { orderSlots, swatchOf, typeLabel, type FilamentState } from '../filament';
 
 function toDateInput(ms?: number): string {
   const d = new Date(ms || Date.now());
@@ -28,6 +29,8 @@ export type OrderFormValues = {
   amount?: number;
   paid: boolean;
   paidAt?: number;
+  /** 제품별 필라멘트 종류 직접 선택 */
+  filamentPick?: Record<string, string>;
 };
 
 interface Props {
@@ -36,6 +39,7 @@ interface Props {
   onCancel: () => void;
   sources: string[];
   products: Product[];
+  filament?: FilamentState;
 }
 
 const empty: OrderFormValues = {
@@ -56,7 +60,9 @@ export function OrderForm({
   onCancel,
   sources,
   products,
+  filament,
 }: Props) {
+  const [pick, setPick] = useState<Record<string, string>>({});
   const [values, setValues] = useState<OrderFormValues>(empty);
   const [selected, setSelected] = useState<string[]>([]);
   const [itemsNote, setItemsNote] = useState('');
@@ -78,6 +84,7 @@ export function OrderForm({
         paidAt: initial.paidAt,
       });
       setAmountText(initial.amount !== undefined ? String(initial.amount) : '');
+      setPick(initial.filamentPick || {});
       const parsed = parseItemsAgainstCatalog(initial.items, products);
       setSelected(parsed.selected);
       setItemsNote(parsed.note);
@@ -86,6 +93,7 @@ export function OrderForm({
       setSelected([]);
       setItemsNote('');
       setAmountText('');
+      setPick({});
     }
   }, [initial, products]);
 
@@ -114,8 +122,10 @@ export function OrderForm({
     }
     const items = joinItems(orderedSelected(), itemsNote);
     const amtRaw = amountText.replace(/[^\d]/g, '');
+    const keepPick = Object.keys(pick).length ? pick : undefined;
     onSubmit({
       ...values,
+      filamentPick: keepPick,
       amount: amtRaw ? Number(amtRaw) : undefined,
       paidAt: values.paid ? values.paidAt || Date.now() : undefined,
       name: values.name.trim(),
@@ -199,6 +209,42 @@ export function OrderForm({
             ) : null}
           </p>
         )}
+        {filament && (() => {
+          const slots = orderSlots({ items: joinItems(orderedSelected(), itemsNote), filamentPick: pick }, products, filament);
+          if (slots.length === 0) return null;
+          const opts = filament.types.filter((t) => !t.hidden);
+          return (
+            <div className="fil-pick">
+              <span className="hint">🧵 필라멘트 (메모의 색상 요청 자동 반영 · 바꿀 수 있어요)</span>
+              {slots.map((sl) => {
+                const k = `${sl.product}#${sl.idx}`;
+                const t = filament.types.find((x) => x.id === sl.typeId);
+                return (
+                  <label key={k}>
+                    <i className="fil-dot" style={{ background: swatchOf(t) }} />
+                    <span>{sl.product} · {sl.grams * sl.qty}g</span>
+                    <select
+                      value={sl.typeId}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPick((p) => {
+                          const n = { ...p };
+                          if (v === sl.defaultTypeId && !itemsNote) delete n[k];
+                          else n[k] = v;
+                          return n;
+                        });
+                      }}
+                    >
+                      {opts.map((o) => (
+                        <option key={o.id} value={o.id}>{typeLabel(o)}</option>
+                      ))}
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          );
+        })()}
       </fieldset>
 
       <label className="field">

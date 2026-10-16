@@ -5,18 +5,41 @@ import {
   type Product,
   type ProductColor,
 } from '../products';
+import { productParts, swatchOf, typeLabel, type FilamentState } from '../filament';
 
 interface Props {
   products: Product[];
   onChange: (next: Product[]) => void;
   onClose: () => void;
+  filament?: FilamentState;
+  onOpenFilament?: () => void;
 }
 
 function sameColor(a: ProductColor, b: ProductColor): boolean {
   return a.bg === b.bg && a.border === b.border && a.text === b.text;
 }
 
-export function ProductManager({ products, onChange, onClose }: Props) {
+export function ProductManager({ products, onChange, onClose, filament, onOpenFilament }: Props) {
+  const typeOpts = (filament?.types || []).filter((t) => !t.hidden);
+
+  function setParts(name: string, parts: { typeId: string; grams: number }[]) {
+    onChange(
+      products.map((p) => {
+        if (p.name !== name) return p;
+        const next = { ...p };
+        const clean = parts.filter((x) => x.typeId);
+        if (clean.length === 0) {
+          delete next.filaments;
+          delete next.grams;
+        } else {
+          next.filaments = clean;
+          next.grams = clean.reduce((a, x) => a + (x.grams || 0), 0);
+        }
+        return next;
+      }),
+    );
+  }
+
   const [draft, setDraft] = useState('');
   const [draftColor, setDraftColor] = useState<ProductColor>(
     PRODUCT_COLOR_PALETTE[0],
@@ -80,7 +103,7 @@ export function ProductManager({ products, onChange, onClose }: Props) {
     setEditingColorFor(null);
   }
 
-  function setNumber(name: string, key: 'price' | 'grams', raw: string) {
+  function setNumber(name: string, key: 'price', raw: string) {
     const digits = raw.replace(/[^\d.]/g, '');
     onChange(
       products.map((p) => {
@@ -249,16 +272,54 @@ export function ProductManager({ products, onChange, onClose }: Props) {
                     aria-label={`${name} 판매가`}
                   />
                 </label>
-                <label>
-                  <span>필라멘트(g)</span>
-                  <input
-                    inputMode="decimal"
-                    defaultValue={product.grams ?? ''}
-                    placeholder="0"
-                    onBlur={(e) => setNumber(name, 'grams', e.target.value)}
-                    aria-label={`${name} 필라멘트 소모량`}
-                  />
-                </label>
+              </div>
+              <div className="fil-parts">
+                <span className="hint">필라멘트 (1개당){typeOpts.length <= 1 && onOpenFilament ? ' — ' : ''}
+                  {typeOpts.length <= 1 && onOpenFilament && (
+                    <button type="button" className="btn-link" onClick={onOpenFilament}>재질·색상 종류 추가하기</button>
+                  )}
+                </span>
+                {(() => {
+                  const parts = productParts(product);
+                  return (
+                    <>
+                      {parts.map((part, pi) => {
+                        const t = filament?.types.find((x) => x.id === part.typeId);
+                        return (
+                          <div className="fil-row" key={`${pi}-${part.typeId}`}>
+                            <i className="fil-dot" style={{ background: swatchOf(t) }} />
+                            <select
+                              className="grow"
+                              value={part.typeId}
+                              onChange={(e) => setParts(name, parts.map((x, j) => (j === pi ? { ...x, typeId: e.target.value } : x)))}
+                              aria-label={`${name} 필라멘트 종류`}
+                            >
+                              {!typeOpts.some((o) => o.id === part.typeId) && <option value={part.typeId}>{typeLabel(t)}</option>}
+                              {typeOpts.map((o) => <option key={o.id} value={o.id}>{typeLabel(o)}</option>)}
+                            </select>
+                            <input
+                              inputMode="decimal"
+                              style={{ width: 80 }}
+                              defaultValue={part.grams || ''}
+                              placeholder="g"
+                              onBlur={(e) => setParts(name, parts.map((x, j) => (j === pi ? { ...x, grams: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 } : x)))}
+                              aria-label={`${name} 필라멘트 g`}
+                            />
+                            <span>g</span>
+                            <button type="button" className="btn btn-danger-ghost source-mgr-btn" onClick={() => setParts(name, parts.filter((_, j) => j !== pi))}>×</button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        className="btn btn-ghost source-mgr-btn"
+                        onClick={() => setParts(name, [...parts, { typeId: typeOpts[0]?.id || 'default', grams: 0 }])}
+                      >
+                        + 재질 추가
+                      </button>
+                    </>
+                  );
+                })()}
               </div>
               {isColorEdit && (
                 <div className="product-color-edit-row">
