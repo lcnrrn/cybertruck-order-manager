@@ -12,15 +12,25 @@ export interface Order {
   priority: boolean;
   /** 우체국 등기(송장)번호 — 기존 저장분에는 없을 수 있음 */
   trackingNumber?: string;
+  /** 금액(원) 직접 입력값 — 없으면 제품 판매가 × 수량으로 자동 계산 */
+  amount?: number;
+  /** 입금 완료 여부 */
+  paid?: boolean;
+  /** 입금일 (ms) */
+  paidAt?: number;
+  /** 완료 처리 시 차감된 필라멘트(g) — 값이 있으면 이미 차감됨(중복 차감 방지) */
+  filamentG?: number;
+  /** 필라멘트 차감 시각 (ms) */
+  filamentAt?: number;
   createdAt: number;
   updatedAt: number;
 }
 
 /** 작업중 = 대기 + 제작중 (기본 작업 큐) */
-export type StatusFilter = '작업중' | '전체' | OrderStatus;
+export type StatusFilter = '작업중' | '전체' | '미입금' | OrderStatus;
 
 export const STATUS_OPTIONS: OrderStatus[] = ['대기', '제작중', '완료'];
-export const FILTER_OPTIONS: StatusFilter[] = ['작업중', '대기', '제작중', '완료', '전체'];
+export const FILTER_OPTIONS: StatusFilter[] = ['작업중', '대기', '제작중', '완료', '미입금', '전체'];
 
 export type PeriodPreset = 'this_month' | 'last_month' | 'all' | 'custom';
 

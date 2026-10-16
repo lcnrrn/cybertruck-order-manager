@@ -16,6 +16,11 @@ export const ORDERS_HEADERS = [
   'updatedAt',
   'createdAt',
   'trackingNumber',
+  'amount',
+  'paid',
+  'paidAt',
+  'filamentG',
+  'filamentAt',
 ] as const;
 
 /** Built-in defaults for this user's deployment (public OAuth client id + their sheet). */

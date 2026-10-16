@@ -41,9 +41,18 @@ export function normalizeOrder(raw: unknown): Order | null {
     status: parseStatus(o.status),
     priority: Boolean(o.priority),
     trackingNumber,
+    amount: num(o.amount),
+    paid: o.paid === true ? true : undefined,
+    paidAt: num(o.paidAt),
+    filamentG: num(o.filamentG),
+    filamentAt: num(o.filamentAt),
     createdAt,
     updatedAt,
   };
+}
+
+function num(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
 export function isSampleOrderId(id: string): boolean {

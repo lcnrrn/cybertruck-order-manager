@@ -48,6 +48,11 @@ function orderToRow(o: Order): string[] {
     String(o.updatedAt),
     String(o.createdAt),
     o.trackingNumber || '',
+    o.amount !== undefined ? String(o.amount) : '',
+    o.paid ? 'true' : '',
+    o.paidAt ? String(o.paidAt) : '',
+    o.filamentG !== undefined ? String(o.filamentG) : '',
+    o.filamentAt ? String(o.filamentAt) : '',
   ];
 }
 
@@ -74,7 +79,19 @@ function rowToOrder(row: string[]): Order | null {
     updatedAt,
     createdAt,
     trackingNumber: tracking || undefined,
+    amount: optNum(row[11]),
+    paid: String(row[12] || '').toLowerCase() === 'true' || undefined,
+    paidAt: optNum(row[13]),
+    filamentG: optNum(row[14]),
+    filamentAt: optNum(row[15]),
   };
+}
+
+function optNum(raw: string | undefined): number | undefined {
+  const t = String(raw ?? '').replace(/,/g, '').trim();
+  if (!t) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /** Ensure "Orders" tab exists; create with headers if missing. */
@@ -119,7 +136,7 @@ export async function ensureOrdersSheet(accessToken: string): Promise<void> {
 export async function pullOrders(accessToken: string): Promise<Order[]> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:K`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:P`);
   const res = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}`);
   if (!res.ok) {
     throw new Error(`시트 읽기 실패: ${await readError(res)}`);
@@ -141,7 +158,7 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
 export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:K`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:P`);
 
   const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}:clear`, {
     method: 'POST',
