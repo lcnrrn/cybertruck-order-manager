@@ -32,9 +32,23 @@ export function SmsSettings({ onClose, onSaved }: Props) {
     <form className="order-form sms-settings" onSubmit={handleSave}>
       <h2 className="sheet-title">문자 템플릿</h2>
       <p className="hint">
-        완료안내 · 발송안내 버튼에 들어가는 문구입니다. 이 기기에만 저장됩니다.
+        접수문자 · 완료안내 · 발송안내 버튼에 들어가는 문구입니다. 구글 시트로 다른 기기와 같이 맞춰집니다.
         발송 안내에 <code>{'{{등기번호}}'}</code>를 넣으면 송장이 있을 때 자동으로
         바뀝니다.
+      </p>
+
+      <label className="field">
+        <span>주문 접수 · 입금 안내</span>
+        <textarea
+          rows={6}
+          value={bodies.접수}
+          onChange={(e) => setBodies((b) => ({ ...b, 접수: e.target.value }))}
+          placeholder={DEFAULT_SMS_BODIES.접수}
+        />
+      </label>
+      <p className="hint">
+        <code>{'{{이름}}'}</code> <code>{'{{주문내용}}'}</code> <code>{'{{금액}}'}</code>이 자동으로 바뀝니다.
+        [은행명 계좌번호 예금주] 부분은 실제 계좌로 고쳐 주세요.
       </p>
 
       <label className="field">

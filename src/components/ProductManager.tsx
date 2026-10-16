@@ -1,3 +1,4 @@
+import { loadProductionSettings, saveProductionSettings } from '../production';
 import { useState } from 'react';
 import {
   DEFAULT_PRODUCTS,
@@ -20,6 +21,7 @@ function sameColor(a: ProductColor, b: ProductColor): boolean {
 }
 
 export function ProductManager({ products, onChange, onClose, filament, onOpenFilament }: Props) {
+  const [prodSet, setProdSet] = useState(() => loadProductionSettings());
   const typeOpts = (filament?.types || []).filter((t) => !t.hidden);
 
   function setParts(name: string, parts: { typeId: string; grams: number }[]) {
@@ -103,7 +105,7 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
     setEditingColorFor(null);
   }
 
-  function setNumber(name: string, key: 'price', raw: string) {
+  function setNumber(name: string, key: 'price' | 'minutes', raw: string) {
     const digits = raw.replace(/[^\d.]/g, '');
     onChange(
       products.map((p) => {
@@ -164,6 +166,37 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
   return (
     <div className="sheet-body source-manager">
       <h2 className="sheet-title">제품 관리</h2>
+      <div className="prod-settings">
+        <span className="hint">⏱ 제작 설정 (예상 완료일 계산)</span>
+        <div className="product-numbers">
+          <label>
+            <span>프린터 대수</span>
+            <input
+              inputMode="numeric"
+              defaultValue={prodSet.printers}
+              onBlur={(e) => {
+                const n = Math.max(1, Math.round(Number(e.target.value.replace(/[^\d]/g, '')) || 1));
+                const next = { ...prodSet, printers: n };
+                setProdSet(next);
+                saveProductionSettings(next);
+              }}
+            />
+          </label>
+          <label>
+            <span>하루 가동 시간</span>
+            <input
+              inputMode="decimal"
+              defaultValue={prodSet.hoursPerDay}
+              onBlur={(e) => {
+                const n = Math.min(24, Math.max(0.5, Number(e.target.value.replace(/[^\d.]/g, '')) || 12));
+                const next = { ...prodSet, hoursPerDay: n };
+                setProdSet(next);
+                saveProductionSettings(next);
+              }}
+            />
+          </label>
+        </div>
+      </div>
       <p className="hint">
         주문 내용에 쓸 제품 목록을 추가·이름 변경·색상·삭제·순서 변경할 수 있습니다.
         제품마다 <b>판매가(1개)</b>와 <b>필라멘트 소모량(1개, g)</b>을 입력하면 주문 금액과 필라멘트 차감이 자동 계산됩니다.
@@ -270,6 +303,16 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                     placeholder="0"
                     onBlur={(e) => setNumber(name, 'price', e.target.value)}
                     aria-label={`${name} 판매가`}
+                  />
+                </label>
+                <label>
+                  <span>출력 시간(분/1개)</span>
+                  <input
+                    inputMode="numeric"
+                    defaultValue={product.minutes ?? ''}
+                    placeholder="0"
+                    onBlur={(e) => setNumber(name, 'minutes', e.target.value)}
+                    aria-label={`${name} 출력 시간`}
                   />
                 </label>
               </div>

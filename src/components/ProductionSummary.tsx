@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { Order } from '../types';
 import { getProductColor, type Product } from '../products';
-import { buildProductionSummary, pendingGrams } from '../production';
+import { buildProductionSummary, estimateDays, formatDuration, loadProductionSettings, pendingGrams, pendingMinutes } from '../production';
+import { SETTINGS_APPLIED_EVENT } from '../settingsMeta';
+import { useEffect } from 'react';
 import { pendingByType, stockByType, swatchOf, thresholdOf, typeLabel, type FilamentState } from '../filament';
 
 const COLLAPSE_KEY = 'cybertruck-production-collapsed';
@@ -35,6 +37,18 @@ export function ProductionSummary({ orders, products, filament, selected, onSele
   };
 
   const needG = useMemo(() => pendingGrams(orders, products), [orders, products]);
+  const needMin = useMemo(() => pendingMinutes(orders, products), [orders, products]);
+  const [prodSet, setProdSet] = useState(() => loadProductionSettings());
+  useEffect(() => {
+    const re = () => setProdSet(loadProductionSettings());
+    window.addEventListener(SETTINGS_APPLIED_EVENT, re);
+    window.addEventListener('cybertruck-production-settings', re);
+    return () => {
+      window.removeEventListener(SETTINGS_APPLIED_EVENT, re);
+      window.removeEventListener('cybertruck-production-settings', re);
+    };
+  }, []);
+  const days = estimateDays(needMin, prodSet);
   const perType = useMemo(() => {
     if (!filament) return [];
     const need = pendingByType(orders, products, filament);
@@ -63,6 +77,11 @@ export function ProductionSummary({ orders, products, filament, selected, onSele
         </span>
         <span className="prod-summary-caret">{collapsed ? '▼' : '▲'}</span>
       </button>
+      {!collapsed && needMin > 0 && (
+        <div className="prod-time">
+          ⏱ 총 출력 {formatDuration(needMin)} · 프린터 {prodSet.printers}대 × 하루 {prodSet.hoursPerDay}시간 기준 <b>약 {days}일</b>
+        </div>
+      )}
       {selected && (
         <div className="prod-summary-filter">
           <span>‘{selected}’ 포함 주문만 보는 중</span>

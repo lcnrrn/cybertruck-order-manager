@@ -1,6 +1,7 @@
-export type SmsTemplateId = '완료' | '발송' | 'custom';
+export type SmsTemplateId = '접수' | '완료' | '발송' | 'custom';
 
 export type SmsTemplateBodies = {
+  접수: string;
   완료: string;
   발송: string;
 };
@@ -11,6 +12,8 @@ const LS_SMS_TEMPLATES = 'cybertruck-sms-templates-v1';
 
 /** Built-in defaults. 발송 may include {{등기번호}} for tracking injection. */
 export const DEFAULT_SMS_BODIES: SmsTemplateBodies = {
+  접수:
+    '안녕하세요 {{이름}}님, 주문 접수되었습니다.\n주문내용: {{주문내용}}\n결제금액: {{금액}}\n입금계좌: [은행명 계좌번호 예금주]\n입금 확인 후 제작 시작하겠습니다. 감사합니다.',
   완료: '안녕하세요. 주문하신 제품 제작이 완료되었습니다. 곧 발송 안내드리겠습니다.',
   발송:
     '안녕하세요. 주문하신 제품이 발송되었습니다. 우체국 등기번호는 {{등기번호}} 입니다. 도착까지 조금만 기다려 주세요.',
@@ -21,6 +24,10 @@ export const SMS_TEMPLATES: Record<
   Exclude<SmsTemplateId, 'custom'>,
   { label: string; body: string }
 > = {
+  접수: {
+    label: '주문 접수',
+    body: DEFAULT_SMS_BODIES.접수,
+  },
   완료: {
     label: '제작 완료',
     body: DEFAULT_SMS_BODIES.완료,
@@ -48,8 +55,10 @@ function normalizeBodies(raw: unknown): SmsTemplateBodies | null {
   const o = raw as Record<string, unknown>;
   const done = typeof o['완료'] === 'string' ? o['완료'].trim() : '';
   const ship = typeof o['발송'] === 'string' ? o['발송'].trim() : '';
-  if (!done && !ship) return null;
+  const recv = typeof o['접수'] === 'string' ? o['접수'].trim() : '';
+  if (!done && !ship && !recv) return null;
   return {
+    접수: recv || DEFAULT_SMS_BODIES.접수,
     완료: done || DEFAULT_SMS_BODIES.완료,
     발송: ship || DEFAULT_SMS_BODIES.발송,
   };
@@ -72,6 +81,7 @@ export function getSmsTemplates(): SmsTemplateBodies {
 /** Persist SMS template bodies. */
 export function setSmsTemplates(bodies: SmsTemplateBodies): void {
   const next: SmsTemplateBodies = {
+    접수: (bodies.접수 || '').trim() || DEFAULT_SMS_BODIES.접수,
     완료: (bodies.완료 || '').trim() || DEFAULT_SMS_BODIES.완료,
     발송: (bodies.발송 || '').trim() || DEFAULT_SMS_BODIES.발송,
   };
@@ -90,6 +100,14 @@ export function resetSmsTemplates(): void {
   } catch {
     /* ignore */
   }
+}
+
+/** 주문 접수 SMS — {{이름}} {{주문내용}} {{금액}} 치환 */
+export function buildReceiptSmsBody(o: { name: string; items: string }, amountWon: string): string {
+  return getSmsTemplates()
+    .접수.replaceAll('{{이름}}', o.name || '')
+    .replaceAll('{{주문내용}}', (o.items || '').replace(/\s*\n\s*/g, ' / '))
+    .replaceAll('{{금액}}', amountWon);
 }
 
 /** 제작 완료 SMS body (user-editable). */
