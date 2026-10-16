@@ -4,6 +4,7 @@ import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
 import { buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
+import { PayBadge } from './PayBadge';
 
 interface Props {
   order: Order;
@@ -13,6 +14,7 @@ interface Props {
   onStatus: (id: string, status: OrderStatus) => void;
   copyText: (text: string, okMessage: string) => void;
   onTogglePriority: (id: string) => void;
+  onTogglePaid: (id: string) => void;
 }
 
 export function OrderCard({
@@ -23,6 +25,7 @@ export function OrderCard({
   onStatus,
   copyText,
   onTogglePriority,
+  onTogglePaid,
 }: Props) {
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
 
@@ -58,6 +61,7 @@ export function OrderCard({
       <div className="order-body">
         <div className="order-items"><ProductBadges items={order.items} products={products} /></div>
         <p className="order-address">{order.address || '주소 없음'}</p>
+        <PayBadge order={order} products={products} onToggle={onTogglePaid} showAmount />
         <p className="order-phone">{formatPhoneDisplay(order.phone) || '연락처 없음'}</p>
         {order.trackingNumber ? (
           <p className="order-tracking" title="등기번호">

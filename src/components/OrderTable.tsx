@@ -5,6 +5,7 @@ import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
 import { buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
+import { PayBadge } from './PayBadge';
 
 interface Props {
   orders: Order[];
@@ -14,6 +15,7 @@ interface Props {
   onStatus: (id: string, status: OrderStatus) => void;
   copyText: (text: string, okMessage: string) => void;
   onTogglePriority: (id: string) => void;
+  onTogglePaid: (id: string) => void;
 }
 
 export function OrderTable({
@@ -24,6 +26,7 @@ export function OrderTable({
   onStatus,
   copyText,
   onTogglePriority,
+  onTogglePaid,
 }: Props) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -95,6 +98,7 @@ export function OrderTable({
                 </td>
                 <td className="col-sticky-2 col-name">
                   <span className="table-name">{order.name}</span>
+                  <PayBadge order={order} products={products} onToggle={onTogglePaid} />
                   {order.trackingNumber ? (
                     <span className="table-tracking" title="등기번호">
                       {order.trackingNumber}
