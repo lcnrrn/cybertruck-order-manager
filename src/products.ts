@@ -15,6 +15,8 @@ export type Product = {
   price?: number;
   /** 필라멘트 소모량(g) / 1개 */
   grams?: number;
+  /** 출력 시간(분) / 1개 */
+  minutes?: number;
   /** 필라멘트 구성 (여러 재질 가능) — 있으면 grams는 합계 */
   filaments?: { typeId: string; grams: number }[];
 };
@@ -90,6 +92,7 @@ export function normalizeProducts(list: unknown): Product[] | null {
     let color: ProductColor | null = null;
     let price: number | undefined;
     let grams: number | undefined;
+    let minutes: number | undefined;
     let filaments: { typeId: string; grams: number }[] | undefined;
     if (typeof item === 'string') {
       name = item.trim();
@@ -99,6 +102,7 @@ export function normalizeProducts(list: unknown): Product[] | null {
       if (isColor(o.color)) color = o.color;
       if (typeof o.price === 'number' && Number.isFinite(o.price) && o.price >= 0) price = o.price;
       if (typeof o.grams === 'number' && Number.isFinite(o.grams) && o.grams >= 0) grams = o.grams;
+      if (typeof o.minutes === 'number' && Number.isFinite(o.minutes) && o.minutes >= 0) minutes = o.minutes;
       if (Array.isArray(o.filaments)) {
         filaments = (o.filaments as unknown[])
           .filter((f): f is { typeId: string; grams: number } =>
@@ -111,6 +115,7 @@ export function normalizeProducts(list: unknown): Product[] | null {
     const p: Product = { name, color: color ?? colorForName(name, i) };
     if (price !== undefined) p.price = price;
     if (grams !== undefined) p.grams = grams;
+    if (minutes !== undefined) p.minutes = minutes;
     if (filaments && filaments.length) p.filaments = filaments;
     out.push(p);
     i += 1;

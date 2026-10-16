@@ -3,13 +3,14 @@ const META_KEY = 'cybertruck-settings-meta-v1';
 export const SETTINGS_CHANGED_EVENT = 'cybertruck-settings-changed';
 export const SETTINGS_APPLIED_EVENT = 'cybertruck-settings-applied';
 
-export type SettingKey = 'products' | 'sources' | 'sms' | 'filament';
+export type SettingKey = 'products' | 'sources' | 'sms' | 'filament' | 'production';
 
 export const SETTING_LS_KEYS: Record<SettingKey, string> = {
   products: 'cybertruck-products-v1',
   sources: 'cybertruck-sources-v1',
   sms: 'cybertruck-sms-templates-v1',
   filament: 'cybertruck-filament-v1',
+  production: 'cybertruck-production-settings-v1',
 };
 
 export function getSettingsMeta(): Partial<Record<SettingKey, number>> {

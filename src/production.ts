@@ -1,3 +1,4 @@
+import { markSettingChanged as _markProd } from './settingsMeta';
 import type { Order } from './types';
 import { scoreCatalogMatch, stripItemPrices, type Product } from './products';
 
@@ -157,4 +158,73 @@ export function pendingGrams(orders: Order[], catalog: Product[]): number {
 
 export function formatWon(n: number): string {
   return `${Math.round(n).toLocaleString('ko-KR')}원`;
+}
+
+/* ───────── 제작 시간 ───────── */
+
+export interface ProductionSettings {
+  /** 프린터 대수 */
+  printers: number;
+  /** 하루 가동 시간(시간) */
+  hoursPerDay: number;
+}
+
+const LS_PROD_SETTINGS = 'cybertruck-production-settings-v1';
+export const DEFAULT_PRODUCTION_SETTINGS: ProductionSettings = { printers: 1, hoursPerDay: 12 };
+
+export function loadProductionSettings(): ProductionSettings {
+  try {
+    const raw = localStorage.getItem(LS_PROD_SETTINGS);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<ProductionSettings>;
+      return {
+        printers: typeof p.printers === 'number' && p.printers > 0 ? p.printers : 1,
+        hoursPerDay: typeof p.hoursPerDay === 'number' && p.hoursPerDay > 0 ? Math.min(24, p.hoursPerDay) : 12,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { ...DEFAULT_PRODUCTION_SETTINGS };
+}
+
+export function saveProductionSettings(s: ProductionSettings): void {
+  try {
+    localStorage.setItem(LS_PROD_SETTINGS, JSON.stringify(s));
+    _markProd('production');
+    window.dispatchEvent(new CustomEvent('cybertruck-production-settings'));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 주문 1건 출력 시간(분) */
+export function orderMinutes(order: Order, catalog: Product[]): number {
+  const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
+  let sum = 0;
+  for (const p of r.products) {
+    const prod = catalog.find((c) => c.name === p.name);
+    sum += (prod?.minutes || 0) * p.qty;
+  }
+  return sum;
+}
+
+export function pendingMinutes(orders: Order[], catalog: Product[]): number {
+  return orders
+    .filter((o) => o.status === '대기' || o.status === '제작중')
+    .reduce((s, o) => s + orderMinutes(o, catalog), 0);
+}
+
+export function formatDuration(min: number): string {
+  const m = Math.round(min);
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  if (h === 0) return `${r}분`;
+  return r ? `${h}시간 ${r}분` : `${h}시간`;
+}
+
+/** 예상 소요 일수 (프린터 대수 × 하루 가동 시간 기준) */
+export function estimateDays(min: number, s: ProductionSettings): number {
+  const perDay = Math.max(1, s.printers) * Math.max(0.5, s.hoursPerDay) * 60;
+  return min > 0 ? Math.ceil((min / perDay) * 10) / 10 : 0;
 }
