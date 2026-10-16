@@ -9,6 +9,7 @@ import {
   newEntryId,
   newTypeId,
   pendingByType,
+  pendingBreakdownByType,
   productParts,
   stockByType,
   swatchOf,
@@ -71,6 +72,8 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
   const stock = useMemo(() => stockByType(state, orders), [state, orders]);
   const avg = useMemo(() => avgDailyByType(orders), [orders]);
   const need = useMemo(() => pendingByType(orders, products, state), [orders, products, state]);
+  const breakdown = useMemo(() => pendingBreakdownByType(orders, products, state), [orders, products, state]);
+  const [openNeed, setOpenNeed] = useState<string | null>(null);
   const noGrams = !products.some((p) => productParts(p).length > 0);
 
   const history = useMemo(() => {
@@ -160,6 +163,38 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
               <div className="fil-card-meta">
                 하루 평균 {fmt(a)} · 남은 기간 {days === null ? '—' : `약 ${days}일`} · 만들 주문 필요 {fmt(nd)} · 기준 {fmt(th)}
               </div>
+              {nd > 0 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="btn-link"
+                  onClick={(e) => { e.stopPropagation(); setOpenNeed(openNeed === t.id ? null : t.id); }}
+                >
+                  {openNeed === t.id ? '▲ 필요량 내역 닫기' : '▼ 필요량 내역 보기'}
+                </span>
+              )}
+              {openNeed === t.id && (
+                <ul className="filament-history" onClick={(e) => e.stopPropagation()}>
+                  {(() => {
+                    const byProd = new Map<string, { qty: number; g: number; total: number; orders: string[] }>();
+                    for (const l of breakdown[t.id] || []) {
+                      const k = `${l.product}|${l.gramsPerUnit}`;
+                      const r = byProd.get(k) ?? { qty: 0, g: l.gramsPerUnit, total: 0, orders: [] };
+                      r.qty += l.qty; r.total += l.total; r.orders.push(l.qty > 1 ? `${l.orderName}×${l.qty}` : l.orderName);
+                      byProd.set(k, r);
+                    }
+                    return Array.from(byProd.entries()).sort((a, b) => b[1].total - a[1].total).map(([k, r]) => (
+                      <li key={k}>
+                        <span>
+                          {k.split('|')[0]} · {fmt(r.g)} × {r.qty}개{r.g > 2000 ? ' ⚠️ 1개당 g이 너무 커요. 제품 관리에서 확인하세요' : ''}
+                          <br /><small className="hint">{r.orders.join(', ')}</small>
+                        </span>
+                        <b>{fmt(r.total)}</b>
+                      </li>
+                    ));
+                  })()}
+                </ul>
+              )}
               {st < nd && <div className="fil-card-warn">⚠️ 지금 주문 만들기에 {fmt(nd - st)} 부족해요</div>}
               {low && st >= nd && <div className="fil-card-warn">⚠️ 기준 아래예요. 주문하세요!</div>}
               {soon && <div className="fil-card-warn">제작 후 {fmt(st - nd)}로 기준 아래가 돼요. 미리 주문하세요.</div>}

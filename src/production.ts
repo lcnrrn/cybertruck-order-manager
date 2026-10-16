@@ -38,6 +38,13 @@ export function splitQty(part: string): { text: string; qty: number } {
   return { text, qty: Math.max(1, qty) };
 }
 
+/** 이 이상은 오인식(전화번호·치수 등)으로 보고 1개로 처리 */
+export const MAX_QTY = 50;
+
+function countsInName(name: string): number[] {
+  return Array.from(name.matchAll(/(\d{1,3})\s*(?:개|ea|세트|set|pcs)/gi)).map((m) => Number(m[1]));
+}
+
 function charOverlap(a: string, b: string): number {
   const set = new Set(b.replace(/\s+/g, ''));
   let n = 0;
@@ -71,9 +78,21 @@ export function parseOrderProducts(
     .filter(Boolean);
   for (const part of parts) {
     if (/^\s*요청\s*[:：]/.test(part)) continue;
-    const { text, qty } = splitQty(part);
+    const sp = splitQty(part);
+    let { text, qty } = sp;
     if (!text) continue;
-    const name = matchProduct(text, names);
+    let name = matchProduct(text, names);
+    // 제품명 자체에 들어 있는 개수(예: '안전벨트 클립 (풀셋 5개)', '(뒷자석 3개)')는 수량이 아님
+    if (qty > 1) {
+      const whole = stripItemPrices(part).trim();
+      const wholeName = matchProduct(whole, names);
+      if (wholeName && (!name || wholeName === name) && countsInName(wholeName).includes(qty)) {
+        name = wholeName;
+        qty = 1;
+        text = whole;
+      }
+    }
+    if (qty > MAX_QTY) qty = 1;
     if (name === SHIPPING_NAME) continue;
     if (name) {
       const ex = products.find((p) => p.name === name);
@@ -144,7 +163,9 @@ export function orderGrams(order: Order, catalog: Product[]): number {
   let sum = 0;
   for (const p of r.products) {
     const prod = catalog.find((c) => c.name === p.name);
-    const g = prod?.filaments?.length ? prod.filaments.reduce((a, f) => a + (f.grams || 0), 0) : prod?.grams || 0;
+    const g = prod?.filaments?.length
+      ? prod.filaments.reduce((a, f) => a + (Number.isFinite(f.grams) && f.grams > 0 ? f.grams : 0), 0)
+      : prod?.grams || 0;
     sum += g * p.qty;
   }
   return sum;

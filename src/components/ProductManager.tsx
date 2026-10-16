@@ -323,7 +323,8 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                   )}
                 </span>
                 {(() => {
-                  const parts = productParts(product);
+                  const parts = productParts(product, true);
+                  const unused = typeOpts.filter((o) => !parts.some((x) => x.typeId === o.id));
                   return (
                     <>
                       {parts.map((part, pi) => {
@@ -353,13 +354,19 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                           </div>
                         );
                       })}
-                      <button
-                        type="button"
-                        className="btn btn-ghost source-mgr-btn"
-                        onClick={() => setParts(name, [...parts, { typeId: typeOpts[0]?.id || 'default', grams: 0 }])}
-                      >
-                        + 재질 추가
-                      </button>
+                      {unused.length > 0 ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost source-mgr-btn"
+                          onClick={() => setParts(name, [...parts, { typeId: unused[0].id, grams: 0 }])}
+                        >
+                          + 재질 추가
+                        </button>
+                      ) : (
+                        <span className="hint">
+                          {typeOpts.length === 0 ? '필라멘트 종류가 없어요. 「필라멘트」에서 먼저 추가해 주세요.' : '등록된 필라멘트 종류를 모두 넣었어요. 더 넣으려면 「필라멘트」에서 종류를 추가해 주세요.'}
+                        </span>
+                      )}
                     </>
                   );
                 })()}

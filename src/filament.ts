@@ -131,9 +131,11 @@ export interface FilamentPart {
 }
 
 /** 제품 1개당 필라멘트 구성 (레거시 grams → 기본 종류) */
-export function productParts(p: Product | undefined): FilamentPart[] {
+export function productParts(p: Product | undefined, keepEmpty = false): FilamentPart[] {
   if (!p) return [];
-  if (Array.isArray(p.filaments) && p.filaments.length > 0) return p.filaments.filter((f) => f.grams > 0);
+  if (Array.isArray(p.filaments) && p.filaments.length > 0) {
+    return keepEmpty ? p.filaments.map((f) => ({ ...f })) : p.filaments.filter((f) => f.grams > 0 && Number.isFinite(f.grams));
+  }
   return p.grams ? [{ typeId: DEFAULT_TYPE_ID, grams: p.grams }] : [];
 }
 
@@ -204,6 +206,27 @@ export function deductedUse(o: Order): Record<string, number> {
   if (o.filamentUse && Object.keys(o.filamentUse).length) return o.filamentUse;
   if (o.filamentG) return { [DEFAULT_TYPE_ID]: o.filamentG };
   return {};
+}
+
+export interface NeedLine {
+  orderId: string;
+  orderName: string;
+  product: string;
+  qty: number;
+  gramsPerUnit: number;
+  total: number;
+}
+
+/** 종류별 필요량 내역 (주문·제품 단위) — 사용자가 숫자를 검증할 수 있게 */
+export function pendingBreakdownByType(orders: Order[], catalog: Product[], state: FilamentState): Record<string, NeedLine[]> {
+  const m: Record<string, NeedLine[]> = {};
+  for (const o of orders) {
+    if (o.status !== '대기' && o.status !== '제작중') continue;
+    for (const s of orderSlots(o, catalog, state)) {
+      (m[s.typeId] ||= []).push({ orderId: o.id, orderName: o.name, product: s.product, qty: s.qty, gramsPerUnit: s.grams, total: s.grams * s.qty });
+    }
+  }
+  return m;
 }
 
 export function pendingByType(orders: Order[], catalog: Product[], state: FilamentState): Record<string, number> {
