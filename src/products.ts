@@ -1,3 +1,5 @@
+import { markSettingChanged } from './settingsMeta';
+
 const STORAGE_KEY = 'cybertruck-products-v1';
 
 export type ProductColor = {
@@ -146,6 +148,7 @@ export function setProducts(list: Product[]): void {
   if (!normalized) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    markSettingChanged('products');
   } catch {
     /* ignore */
   }

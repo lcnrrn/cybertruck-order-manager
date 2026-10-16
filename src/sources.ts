@@ -1,5 +1,7 @@
 import type { Order } from './types';
 
+import { markSettingChanged } from './settingsMeta';
+
 const STORAGE_KEY = 'cybertruck-sources-v1';
 
 /** Built-in default 주문 경로 labels (stored in Order.group). */
@@ -89,6 +91,7 @@ export function setSources(list: string[]): void {
   if (!normalized) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    markSettingChanged('sources');
   } catch {
     /* ignore */
   }

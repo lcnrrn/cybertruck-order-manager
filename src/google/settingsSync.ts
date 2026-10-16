@@ -1,0 +1,185 @@
+import { getSheetId } from './config';
+import {
+  SETTINGS_APPLIED_EVENT,
+  SETTING_LS_KEYS,
+  getSettingsMeta,
+  setSettingMeta,
+  type SettingKey,
+} from '../settingsMeta';
+
+/**
+ * Device settings sync via a separate "설정" tab: one row per key (key | json | updatedAt).
+ * - products / sources / sms: last-write-wins per key (updatedAt).
+ * - filament: entries merged append-only by id (both devices' purchases kept); threshold LWW.
+ * - A device that never edited a key (no local data) has updatedAt 0 → remote always wins.
+ * - Remote empty → local real data is pushed (first device with real data wins).
+ */
+const API = 'https://sheets.googleapis.com/v4/spreadsheets';
+export const SETTINGS_SHEET_NAME = '설정';
+const HEADERS = ['key', 'json', 'updatedAt'];
+const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament'];
+
+interface Entry {
+  json: string; // '' = default / not set
+  updatedAt: number;
+}
+
+function req(token: string, path: string, init?: RequestInit) {
+  return fetch(`${API}/${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  });
+}
+
+async function check(res: Response, what: string): Promise<Response> {
+  if (res.ok) return res;
+  let msg = `HTTP ${res.status}`;
+  try {
+    const b = (await res.json()) as { error?: { message?: string } };
+    msg = b.error?.message || msg;
+  } catch {
+    /* ignore */
+  }
+  throw new Error(`${what}: ${msg}`);
+}
+
+async function ensureSheet(token: string, id: string): Promise<void> {
+  const meta = await check(await req(token, `${id}?fields=sheets.properties.title`), '설정 탭 확인 실패');
+  const data = (await meta.json()) as { sheets?: { properties?: { title?: string } }[] };
+  if ((data.sheets || []).some((s) => s.properties?.title === SETTINGS_SHEET_NAME)) return;
+  await check(
+    await req(token, `${id}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SETTINGS_SHEET_NAME } } }] }),
+    }),
+    '설정 탭 생성 실패',
+  );
+}
+
+async function pullRemote(token: string, id: string): Promise<Map<SettingKey, Entry>> {
+  const range = encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:C`);
+  const res = await check(await req(token, `${id}/values/${range}`), '설정 읽기 실패');
+  const data = (await res.json()) as { values?: string[][] };
+  const out = new Map<SettingKey, Entry>();
+  for (const row of data.values || []) {
+    const key = String(row[0] || '').trim() as SettingKey;
+    if (!KEYS.includes(key)) continue;
+    out.set(key, { json: String(row[1] ?? ''), updatedAt: Number(row[2]) || 0 });
+  }
+  return out;
+}
+
+async function pushRemote(token: string, id: string, map: Map<SettingKey, Entry>): Promise<void> {
+  const range = encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:C`);
+  await check(await req(token, `${id}/values/${range}:clear`, { method: 'POST', body: '{}' }), '설정 비우기 실패');
+  const values = [HEADERS, ...KEYS.filter((k) => map.has(k)).map((k) => [k, map.get(k)!.json, String(map.get(k)!.updatedAt)])];
+  await check(
+    await req(token, `${id}/values/${encodeURIComponent(`${SETTINGS_SHEET_NAME}!A1`)}?valueInputOption=RAW`, {
+      method: 'PUT',
+      body: JSON.stringify({ values }),
+    }),
+    '설정 쓰기 실패',
+  );
+}
+
+function readLocal(key: SettingKey): Entry | null {
+  let raw: string | null = null;
+  try {
+    raw = localStorage.getItem(SETTING_LS_KEYS[key]);
+  } catch {
+    /* ignore */
+  }
+  const ts = getSettingsMeta()[key] || 0;
+  if (raw === null && ts === 0) return null; // never edited: defaults only
+  // Edited before sync existed → treat as real but oldest (1)
+  return { json: raw ?? '', updatedAt: ts || 1 };
+}
+
+function writeLocal(key: SettingKey, e: Entry): void {
+  try {
+    if (e.json) localStorage.setItem(SETTING_LS_KEYS[key], e.json);
+    else localStorage.removeItem(SETTING_LS_KEYS[key]);
+  } catch {
+    /* ignore */
+  }
+  setSettingMeta(key, e.updatedAt);
+}
+
+interface FilamentLike {
+  entries?: { id?: string; at?: number }[];
+  threshold?: number;
+}
+
+function parseFil(json: string): FilamentLike {
+  try {
+    const p = JSON.parse(json) as FilamentLike;
+    return p && typeof p === 'object' ? p : {};
+  } catch {
+    return {};
+  }
+}
+
+function mergeFilament(local: Entry | null, remote: Entry | null): Entry | null {
+  if (!local) return remote;
+  if (!remote) return local;
+  const l = parseFil(local.json);
+  const r = parseFil(remote.json);
+  const byId = new Map<string, { id?: string; at?: number }>();
+  for (const e of [...(r.entries || []), ...(l.entries || [])]) {
+    if (e && e.id && !byId.has(e.id)) byId.set(e.id, e);
+  }
+  const entries = Array.from(byId.values()).sort((a, b) => (a.at || 0) - (b.at || 0));
+  const newer = local.updatedAt > remote.updatedAt ? l : r;
+  const threshold = typeof newer.threshold === 'number' ? newer.threshold : (l.threshold ?? r.threshold ?? 1000);
+  return { json: JSON.stringify({ entries, threshold }), updatedAt: Math.max(local.updatedAt, remote.updatedAt) };
+}
+
+let running: Promise<boolean> | null = null;
+
+/** Pull → merge → write local / push remote. Returns true if local settings changed. */
+export function syncSettings(token: string): Promise<boolean> {
+  if (running) return running.then(() => syncSettingsOnce(token));
+  running = syncSettingsOnce(token).finally(() => {
+    running = null;
+  });
+  return running;
+}
+
+async function syncSettingsOnce(token: string): Promise<boolean> {
+  const id = getSheetId();
+  if (!id) return false;
+  await ensureSheet(token, id);
+  const remote = await pullRemote(token, id);
+  const merged = new Map<SettingKey, Entry>();
+  let localChanged = false;
+  let remoteChanged = false;
+
+  for (const key of KEYS) {
+    const l = readLocal(key);
+    const r = remote.get(key) || null;
+    let m: Entry | null;
+    if (key === 'filament') m = mergeFilament(l, r);
+    else if (!l) m = r;
+    else if (!r) m = l;
+    else m = l.updatedAt > r.updatedAt ? l : r; // tie → remote (first pusher) wins
+    if (!m) continue;
+    merged.set(key, m);
+    if (!l || l.json !== m.json) {
+      writeLocal(key, m);
+      localChanged = true;
+    } else if (l.updatedAt !== m.updatedAt) {
+      setSettingMeta(key, m.updatedAt);
+    }
+    if (!r || r.json !== m.json || r.updatedAt !== m.updatedAt) remoteChanged = true;
+  }
+
+  if (remoteChanged) await pushRemote(token, id, merged);
+  if (localChanged) {
+    try {
+      window.dispatchEvent(new CustomEvent(SETTINGS_APPLIED_EVENT));
+    } catch {
+      /* ignore */
+    }
+  }
+  return localChanged;
+}
