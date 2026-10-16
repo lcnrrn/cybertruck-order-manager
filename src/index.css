@@ -67,6 +67,23 @@ a {
   min-height: 100dvh;
 }
 
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-row .search-wrap {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.toolbar-row .search-input {
+  width: 100%;
+  min-width: 0;
+}
+
 .sticky-top {
   position: sticky;
   top: 0;
@@ -77,12 +94,6 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
-.app.view-table .sticky-top {
-  margin-left: -12px;
-  margin-right: -12px;
-  padding-left: 12px;
-  padding-right: 12px;
-}
 
 .sticky-top .app-header {
   margin-bottom: 8px;

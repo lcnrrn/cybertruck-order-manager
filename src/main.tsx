@@ -4,7 +4,6 @@ import './index.css';
 import './sms-settings.css';
 import './product.css';
 import './copy-buttons.css';
-import './order-table.css';
 import './money.css';
 import App from './App';
 

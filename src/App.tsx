@@ -11,7 +11,6 @@ import { getProducts, setProducts, type Product } from './products';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
-import { OrderTable } from './components/OrderTable';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
 import { StatusFilterBar } from './components/StatusFilter';
@@ -34,19 +33,6 @@ import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
 
 type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament';
-type ListView = 'table' | 'card';
-
-const VIEW_STORAGE_KEY = 'cybertruck-list-view';
-
-function loadView(): ListView {
-  try {
-    const v = localStorage.getItem(VIEW_STORAGE_KEY);
-    if (v === 'card' || v === 'table') return v;
-  } catch {
-    /* ignore */
-  }
-  return 'table';
-}
 
 function loadStatusFilter(): StatusFilter {
   try {
@@ -116,8 +102,6 @@ export default function App() {
   const [sheet, setSheet] = useState<Sheet>('none');
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [listView, setListView] = useState<ListView>(loadView);
-
   const [sources, setSourcesState] = useState<string[]>(() => getSources());
   // 시트(모달)가 열려 있는 동안 배경 스크롤 위치를 고정하고, 닫으면 원래 위치로 복원
   useLayoutEffect(() => {
@@ -136,13 +120,14 @@ export default function App() {
     };
   }, [sheet]);
 
+  // 예전 표/카드 토글 저장값 정리 (카드 전용으로 고정)
   useEffect(() => {
     try {
-      localStorage.setItem(VIEW_STORAGE_KEY, listView);
+      localStorage.removeItem('cybertruck-list-view');
     } catch {
       /* ignore */
     }
-  }, [listView]);
+  }, []);
 
   useEffect(() => {
     try {
@@ -334,7 +319,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app ${listView === 'table' ? 'view-table' : 'view-card'}`}>
+    <div className="app view-card">
       <div className="sticky-top">
       <header className="app-header">
         <div>
@@ -403,24 +388,6 @@ export default function App() {
               </button>
             ) : null}
           </div>
-          <div className="view-toggle" role="group" aria-label="보기 전환">
-            <button
-              type="button"
-              className={`view-toggle-btn ${listView === 'table' ? 'active' : ''}`}
-              onClick={() => setListView('table')}
-              aria-pressed={listView === 'table'}
-            >
-              표
-            </button>
-            <button
-              type="button"
-              className={`view-toggle-btn ${listView === 'card' ? 'active' : ''}`}
-              onClick={() => setListView('card')}
-              aria-pressed={listView === 'card'}
-            >
-              카드
-            </button>
-          </div>
         </div>
         <StatusFilterBar value={filter} counts={counts} onChange={setFilter} />
         <PeriodFilterBar value={period} onChange={setPeriod} />
@@ -447,7 +414,7 @@ export default function App() {
         onSelect={setProductFilter}
       />
 
-      <main className={listView === 'table' ? 'order-list-table' : 'order-list'}>
+      <main className="order-list">
         {filtered.length === 0 ? (
           <div className="empty">
             <p className="empty-title">{empty.title}</p>
@@ -466,8 +433,6 @@ export default function App() {
               </button>
             ) : null}
           </div>
-        ) : listView === 'table' ? (
-          <OrderTable orders={filtered} products={products} {...sharedCardProps} />
         ) : (
           filtered.map((o) => <OrderCard key={o.id} order={o} products={products} {...sharedCardProps} />)
         )}
