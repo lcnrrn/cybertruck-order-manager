@@ -1145,3 +1145,32 @@ a {
 .backup-sec { margin-bottom: 18px; }
 .backup-sec h3 { font-size: 15px; margin: 0 0 4px; }
 .backup-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+/* ───────── 제작 순번 · 품목별 제작 체크 ───────── */
+.order-card { scroll-margin-top: 220px; }
+.seq-badge {
+  flex: none; min-width: 44px; min-height: 36px; padding: 0 10px; border-radius: 10px;
+  border: 1px dashed #9ca3af; background: transparent; color: #6b7280; font-size: 0.85rem; font-weight: 600;
+}
+.seq-badge.on { border: none; background: #2563eb; color: #fff; font-size: 1.05rem; font-weight: 800; }
+.seq-move { display: inline-flex; gap: 4px; margin-left: auto; flex: none; }
+.seq-move-btn { min-width: 36px; min-height: 36px; font-size: 0.8rem; }
+.make-list { margin: 8px 0; padding: 8px; border-radius: 12px; background: rgba(96, 165, 250, 0.08); display: grid; gap: 6px; }
+.make-head { display: flex; justify-content: space-between; font-size: 0.8rem; color: #9ca3af; font-weight: 600; }
+.make-count { color: #60a5fa; }
+.make-count.done { color: #16a34a; }
+.make-item { display: flex; gap: 6px; align-items: stretch; }
+.make-tap {
+  flex: 1; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; text-align: left;
+  border-radius: 10px; border: 1px solid var(--border); background: var(--bg-elevated); color: inherit; font: inherit;
+}
+.make-box {
+  flex: none; width: 26px; height: 26px; border-radius: 7px; border: 2px solid #9ca3af;
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 800; color: #60a5fa;
+}
+.make-item.done .make-box { background: #16a34a; border-color: #16a34a; color: #fff; }
+.make-item.done .make-label { text-decoration: line-through; opacity: 0.6; }
+.make-label { flex: 1; font-size: 0.92rem; }
+.make-qty { flex: none; font-weight: 700; font-size: 0.9rem; color: #60a5fa; }
+.make-minus { min-width: 44px; }
+.make-complete { width: 100%; min-height: 44px; background: #16a34a; color: #fff; border: none; font-weight: 700; }

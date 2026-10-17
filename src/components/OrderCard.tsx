@@ -5,7 +5,7 @@ import { ProductBadges } from './ProductBadges';
 import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { getSourceColor } from '../sources';
 import { PayBadge } from './PayBadge';
-import { formatWon, orderAmount } from '../production';
+import { formatWon, orderAmount, orderItemProgress, progressTotals } from '../production';
 
 interface Props {
   order: Order;
@@ -16,6 +16,9 @@ interface Props {
   copyText: (text: string, okMessage: string) => void;
   onTogglePriority: (id: string) => void;
   onTogglePaid: (id: string) => void;
+  onSetSeq: (id: string, n: number | null) => void;
+  onMove: (id: string, dir: -1 | 1) => void;
+  onItemDone: (id: string, key: string, count: number) => void;
 }
 
 export function OrderCard({
@@ -27,14 +30,49 @@ export function OrderCard({
   copyText,
   onTogglePriority,
   onTogglePaid,
+  onSetSeq,
+  onMove,
+  onItemDone,
 }: Props) {
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
+  const active = order.status === '대기' || order.status === '제작중';
+  const progress = active ? orderItemProgress(order, products.map((p) => p.name)) : [];
+  const totals = progressTotals(progress);
+  const allDone = totals.total > 0 && totals.done >= totals.total;
+
+  const askSeq = () => {
+    const cur = order.seq ? String(order.seq) : '';
+    const v = window.prompt('제작 순번 (비우면 순번 해제)', cur);
+    if (v === null) return;
+    const n = parseInt(v.replace(/\D/g, ''), 10);
+    onSetSeq(order.id, Number.isFinite(n) && n > 0 ? n : null);
+  };
 
   return (
-    <article className={`order-card ${order.priority ? 'priority' : ''}`}>
+    <article id={`order-${order.id}`} className={`order-card ${order.priority ? 'priority' : ''}`}>
       <header className="order-card-header">
         <div className="order-title-row">
+          {active ? (
+            <button
+              type="button"
+              className={`seq-badge ${order.seq ? 'on' : ''}`}
+              onClick={askSeq}
+              aria-label="제작 순번 지정"
+            >
+              {order.seq ? `${order.seq}번` : '#순번'}
+            </button>
+          ) : null}
           <h2 className="order-name">{order.name}</h2>
+          {active ? (
+            <span className="seq-move" role="group" aria-label="순서 이동">
+              <button type="button" className="btn-icon seq-move-btn" aria-label="위로" onClick={() => onMove(order.id, -1)}>
+                ▲
+              </button>
+              <button type="button" className="btn-icon seq-move-btn" aria-label="아래로" onClick={() => onMove(order.id, 1)}>
+                ▼
+              </button>
+            </span>
+          ) : null}
           <button
             type="button"
             className={`btn-icon priority-btn ${order.priority ? 'on' : ''}`}
@@ -61,6 +99,48 @@ export function OrderCard({
 
       <div className="order-body">
         <div className="order-items"><ProductBadges items={order.items} products={products} /></div>
+        {progress.length ? (
+          <div className="make-list" aria-label="품목별 제작 체크">
+            <div className="make-head">
+              <span>제작 체크</span>
+              <span className={`make-count ${allDone ? 'done' : ''}`}>
+                제작 {totals.done}/{totals.total}
+              </span>
+            </div>
+            {progress.map((it) => {
+              const full = it.done >= it.qty;
+              return (
+                <div key={it.key} className={`make-item ${full ? 'done' : ''}`}>
+                  <button
+                    type="button"
+                    className="make-tap"
+                    onClick={() => onItemDone(order.id, it.key, full ? 0 : it.done + 1)}
+                    aria-label={`${it.label} 제작 ${it.done}/${it.qty}`}
+                  >
+                    <span className="make-box">{full ? '✓' : it.done > 0 ? it.done : ''}</span>
+                    <span className="make-label">{it.label}</span>
+                    <span className="make-qty">{it.qty > 1 ? `${it.done}/${it.qty}` : full ? '완료' : ''}</span>
+                  </button>
+                  {it.done > 0 && it.qty > 1 ? (
+                    <button
+                      type="button"
+                      className="btn-icon make-minus"
+                      aria-label="1개 빼기"
+                      onClick={() => onItemDone(order.id, it.key, it.done - 1)}
+                    >
+                      −
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+            {allDone ? (
+              <button type="button" className="btn make-complete" onClick={() => onStatus(order.id, '완료')}>
+                모두 제작됨 → 완료 처리
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <p className="order-address">{order.address || '주소 없음'}</p>
         <PayBadge order={order} products={products} onToggle={onTogglePaid} showAmount />
         <p className="order-phone">{formatPhoneDisplay(order.phone) || '연락처 없음'}</p>
