@@ -62,3 +62,19 @@
 .fil-pick { margin-top:6px; display:flex; flex-direction:column; gap:6px; }
 .fil-pick label { display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:14px; }
 .fil-pick select { min-height:40px; font-size:16px; border-radius:8px; background:#0b1220; color:inherit; border:1px solid #334155; flex:1 1 160px; }
+.fil-cost { flex:none; font-size:12px; } .fil-del { flex:none; min-width:32px; min-height:32px; opacity:.6; }
+.filament-history li span:first-child { flex:1; }
+.expense-h { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.expense-add { min-height:40px; }
+.expense-cats { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+.expense-cat { padding:6px 10px; border-radius:999px; background:#1e293b; border:1px solid #334155; font-size:13px; }
+.expense-cat b { color:#f87171; margin-left:4px; }
+.expense-form { display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:12px; background:#1e293b; border:1px solid #334155; margin-bottom:10px; }
+.expense-form label { display:flex; flex-direction:column; gap:4px; font-size:12px; opacity:.9; }
+.expense-cat-pick { display:flex; flex-wrap:wrap; gap:6px; }
+.expense-list { list-style:none; padding:0; margin:0 0 8px; display:flex; flex-direction:column; gap:6px; }
+.expense-row { width:100%; display:flex; align-items:center; gap:8px; min-height:44px; padding:8px 10px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:inherit; font:inherit; text-align:left; font-size:13px; }
+.expense-date { flex:none; opacity:.7; font-size:12px; }
+.expense-badge { flex:none; padding:2px 8px; border-radius:999px; background:#334155; font-size:12px; }
+.expense-note { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.expense-row b { flex:none; color:#f87171; }
