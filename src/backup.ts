@@ -1,3 +1,5 @@
+import { expenseLines, loadExpenses } from './expenses';
+import { loadFilament } from './filament';
 import type { Order } from './types';
 import type { Product } from './products';
 import { orderAmount } from './production';
@@ -51,6 +53,14 @@ export async function exportOrdersXlsx(orders: Order[], products: Product[], lab
   ws['!cols'] = [16, 10, 14, 36, 40, 10, 8, 5, 10, 8, 9, 16, 16, 9, 16, 12].map((wch) => ({ wch }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '주문');
+  const lines = expenseLines(loadExpenses(), loadFilament()).sort((x, y) => x.at - y.at);
+  if (lines.length) {
+    const ws2 = XLSX.utils.json_to_sheet(
+      lines.map((l) => ({ 날짜: fmtDate(l.at), 분류: l.category, 내용: l.note, 금액: l.amount })),
+    );
+    ws2['!cols'] = [16, 10, 40, 12].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, ws2, '지출');
+  }
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
   download(
     new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),

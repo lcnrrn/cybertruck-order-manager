@@ -16,6 +16,7 @@ import {
   thresholdOf,
   typeHasHistory,
   typeLabel,
+  type FilamentEntry,
   type FilamentState,
   type FilamentType,
 } from '../filament';
@@ -65,6 +66,7 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
   const sel = state.types.find((t) => t.id === selId) || visible[0] || state.types[0];
   const [addG, setAddG] = useState('1000');
   const [note, setNote] = useState('');
+  const [cost, setCost] = useState('');
   const [setTo, setSetTo] = useState('');
   const [editing, setEditing] = useState<FilamentType | null>(null);
   const [showLists, setShowLists] = useState(false);
@@ -77,9 +79,10 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
   const noGrams = !products.some((p) => productParts(p).length > 0);
 
   const history = useMemo(() => {
-    const rows: { at: number; g: number; text: string }[] = state.entries
-      .filter((e) => (e.typeId || DEFAULT_TYPE_ID) === sel?.id)
+    const rows: { at: number; g: number; text: string; entry?: FilamentEntry }[] = state.entries
+      .filter((e) => !e.deleted && (e.typeId || DEFAULT_TYPE_ID) === sel?.id)
       .map((e) => ({
+        entry: e,
         at: e.at,
         g: e.grams,
         text: e.kind === 'purchase' ? `구매${e.note ? ` · ${e.note}` : ''}` : `재고 보정${e.note ? ` · ${e.note}` : ''}`,
@@ -94,9 +97,35 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
   if (!sel) return null;
   const selStock = stock[sel.id] || 0;
 
-  function addEntry(grams: number, kind: 'purchase' | 'adjust', n: string) {
+  function addEntry(grams: number, kind: 'purchase' | 'adjust', n: string, won?: number) {
     if (!grams) return;
-    onChange({ ...state, entries: [...state.entries, { id: newEntryId(), at: Date.now(), grams, note: n, kind, typeId: sel.id }] });
+    const now = Date.now();
+    const e: FilamentEntry = { id: newEntryId(), at: now, grams, note: n, kind, typeId: sel.id, updatedAt: now };
+    if (won && won > 0) e.cost = won;
+    onChange({ ...state, entries: [...state.entries, e] });
+  }
+
+  function patchEntry(id: string, patch: Partial<FilamentEntry>) {
+    onChange({
+      ...state,
+      entries: state.entries.map((e) => {
+        if (e.id !== id) return e;
+        const n: FilamentEntry = { ...e, ...patch, updatedAt: Date.now() };
+        if ('cost' in patch && !patch.cost) delete n.cost;
+        return n;
+      }),
+    });
+  }
+
+  function editCost(e: FilamentEntry) {
+    const v = window.prompt('구매 금액(원) — 비우면 금액 없음', e.cost ? String(e.cost) : '');
+    if (v === null) return;
+    patchEntry(e.id, { cost: digits(v) || undefined });
+  }
+
+  function removeEntry(e: FilamentEntry) {
+    if (!window.confirm(`${new Date(e.at).toLocaleDateString('ko-KR')} 기록(${fmt(e.grams)})을 삭제할까요? 재고와 지출에서도 빠져요.`)) return;
+    patchEntry(e.id, { deleted: true });
   }
 
   function applySetTo() {
@@ -245,9 +274,11 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
       </div>
       <div className="source-manager-add">
         <input className="source-custom-input" inputMode="numeric" value={addG} onChange={(e) => setAddG(e.target.value)} placeholder="g" aria-label="구매량 g" />
+        <input className="source-custom-input" inputMode="numeric" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="금액(원)" aria-label="구매 금액 원" />
         <input className="source-custom-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="메모 (예: 쿠팡)" aria-label="메모" />
-        <button type="button" className="btn btn-primary" onClick={() => { addEntry(digits(addG), 'purchase', note.trim()); setNote(''); }}>구매 추가</button>
+        <button type="button" className="btn btn-primary" onClick={() => { addEntry(digits(addG), 'purchase', note.trim(), digits(cost)); setNote(''); setCost(''); }}>구매 추가</button>
       </div>
+      <p className="hint">금액을 넣으면 「매출 정리」에 필라멘트 지출로 잡혀요. 아래 기록에서 나중에 금액을 넣거나 고칠 수도 있어요.</p>
       <p className="hint">재고 직접 맞추기 — 지금 가진 이 필라멘트 양을 입력하세요.</p>
       <div className="source-manager-add">
         <input className="source-custom-input" inputMode="numeric" value={setTo} onChange={(e) => setSetTo(e.target.value)} placeholder={`현재 ${fmt(selStock)}`} aria-label="실제 재고 g" />
@@ -258,9 +289,17 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
       <ul className="filament-history">
         {history.length === 0 && <li className="hint">아직 기록이 없어요.</li>}
         {history.map((h, i) => (
-          <li key={i}>
+          <li key={h.entry?.id ?? i}>
             <span>{new Date(h.at).toLocaleDateString('ko-KR')} {h.text}</span>
+            {h.entry?.kind === 'purchase' ? (
+              <button type="button" className="btn-link fil-cost" onClick={() => editCost(h.entry!)}>
+                {h.entry.cost ? `${h.entry.cost.toLocaleString('ko-KR')}원` : '+금액'}
+              </button>
+            ) : null}
             <b className={h.g < 0 ? 'neg' : 'pos'}>{h.g > 0 ? '+' : ''}{fmt(h.g)}</b>
+            {h.entry ? (
+              <button type="button" className="btn-icon fil-del" aria-label="기록 삭제" onClick={() => removeEntry(h.entry!)}>✕</button>
+            ) : null}
           </li>
         ))}
       </ul>

@@ -1,4 +1,18 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { FilamentState } from '../filament';
+import { SETTINGS_APPLIED_EVENT } from '../settingsMeta';
+import {
+  FILAMENT_CATEGORY,
+  expenseLines,
+  expenseTotals,
+  inBounds,
+  loadExpenses,
+  newExpenseId,
+  saveExpenses,
+  type Expense,
+  type ExpenseLine,
+  type ExpenseState,
+} from '../expenses';
 import type { Order, PeriodRange } from '../types';
 import type { Product } from '../products';
 import { orderTimestamp, resolvePeriodBounds } from '../period';
@@ -7,6 +21,7 @@ import { PeriodFilterBar } from './PeriodFilter';
 
 interface Props {
   orders: Order[];
+  filament?: FilamentState;
   products: Product[];
   period: PeriodRange;
   onPeriod: (p: PeriodRange) => void;
@@ -21,7 +36,25 @@ function monthKey(ts: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function SalesReport({ orders, products, period, onPeriod, onTogglePaid, onMarkPaid, onEdit, onClose }: Props) {
+function toDateInput(ms: number): string {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function fromDateInput(s: string): number {
+  const [y, m, d] = s.split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d, 12).getTime() : Date.now();
+}
+
+interface Draft {
+  id?: string;
+  date: string;
+  category: string;
+  note: string;
+  amount: string;
+}
+
+export function SalesReport({ filament, orders, products, period, onPeriod, onTogglePaid, onMarkPaid, onEdit, onClose }: Props) {
   const data = useMemo(() => {
     const bounds = resolvePeriodBounds(period);
     const list = orders.filter((o) => {
@@ -60,6 +93,67 @@ export function SalesReport({ orders, products, period, onPeriod, onTogglePaid, 
     return { count: list.length, total, paid, unpaidSum: total - paid, unpaid, monthRows, prodRows, list };
   }, [orders, products, period]);
 
+  const [exp, setExp] = useState<ExpenseState>(() => loadExpenses());
+  useEffect(() => {
+    const re = () => setExp(loadExpenses());
+    window.addEventListener(SETTINGS_APPLIED_EVENT, re);
+    return () => window.removeEventListener(SETTINGS_APPLIED_EVENT, re);
+  }, []);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const commit = (next: ExpenseState) => {
+    setExp(next);
+    saveExpenses(next);
+  };
+  const ex = useMemo(() => {
+    const bounds = resolvePeriodBounds(period);
+    const lines = expenseLines(exp, filament ?? null).filter((l) => inBounds(l.at, bounds));
+    return { lines, ...expenseTotals(lines) };
+  }, [exp, filament, period]);
+  const profit = data.total - ex.total;
+
+  const openNew = () =>
+    setDraft({ date: toDateInput(Date.now()), category: exp.categories[0] || '부속품', note: '', amount: '' });
+  const openLine = (l: ExpenseLine) => {
+    if (l.filamentEntryId) {
+      window.alert('필라멘트 구매 지출은 「필라멘트」 화면의 기록에서 금액을 고치거나 삭제할 수 있어요.');
+      return;
+    }
+    const it = exp.items.find((x) => x.id === l.id);
+    if (it) setDraft({ id: it.id, date: toDateInput(it.at), category: it.category, note: it.note, amount: String(it.amount) });
+  };
+  const saveDraft = () => {
+    if (!draft) return;
+    const amount = Number(draft.amount.replace(/[^\d]/g, ''));
+    if (!amount) {
+      window.alert('금액을 입력해 주세요.');
+      return;
+    }
+    const now = Date.now();
+    const item: Expense = {
+      id: draft.id || newExpenseId(),
+      at: fromDateInput(draft.date),
+      category: draft.category || '기타',
+      note: draft.note.trim(),
+      amount,
+      updatedAt: now,
+    };
+    const items = draft.id ? exp.items.map((x) => (x.id === draft.id ? item : x)) : [...exp.items, item];
+    commit({ ...exp, items });
+    setDraft(null);
+  };
+  const deleteDraft = () => {
+    if (!draft?.id || !window.confirm('이 지출을 삭제할까요?')) return;
+    const id = draft.id;
+    commit({ ...exp, items: exp.items.map((x) => (x.id === id ? { ...x, deleted: true, updatedAt: Date.now() } : x)) });
+    setDraft(null);
+  };
+  const addCategory = () => {
+    const v = window.prompt('새 지출 분류 이름 (예: 포장재)')?.trim();
+    if (!v || v === FILAMENT_CATEGORY || exp.categories.includes(v)) return;
+    commit({ ...exp, categories: [...exp.categories, v] });
+    if (draft) setDraft({ ...draft, category: v });
+  };
+
   const maxMonth = Math.max(1, ...data.monthRows.map(([, m]) => m.total));
   const maxProd = Math.max(1, ...data.prodRows.map(([, r]) => r.amount || r.qty));
   const noPrices = !products.some((p) => (p.price || 0) > 0);
@@ -77,7 +171,55 @@ export function SalesReport({ orders, products, period, onPeriod, onTogglePaid, 
         <div className="report-card"><span>총 매출</span><strong>{formatWon(data.total)}</strong></div>
         <div className="report-card ok"><span>입금</span><strong>{formatWon(data.paid)}</strong></div>
         <div className="report-card bad"><span>미입금</span><strong>{formatWon(data.unpaidSum)}</strong></div>
+        <div className="report-card bad"><span>지출</span><strong>{formatWon(ex.total)}</strong></div>
+        <div className={`report-card ${profit >= 0 ? 'ok' : 'bad'}`}><span>순이익 (매출 − 지출)</span><strong>{formatWon(profit)}</strong></div>
       </div>
+
+      <h3 className="report-h expense-h">
+        <span>지출 {ex.lines.length}건</span>
+        <button type="button" className="btn btn-primary expense-add" onClick={openNew}>+ 지출 추가</button>
+      </h3>
+      {ex.byCategory.length > 0 && (
+        <div className="expense-cats">
+          {ex.byCategory.map(([c, v]) => (
+            <span key={c} className="expense-cat">{c} <b>{formatWon(v)}</b></span>
+          ))}
+        </div>
+      )}
+      {draft && (
+        <div className="expense-form">
+          <label>날짜<input type="date" className="source-custom-input" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} /></label>
+          <div className="expense-cat-pick">
+            {exp.categories.map((c) => (
+              <button key={c} type="button" className={`btn ${draft.category === c ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setDraft({ ...draft, category: c })}>{c}</button>
+            ))}
+            <button type="button" className="btn btn-ghost" onClick={addCategory}>+ 분류</button>
+          </div>
+          <input className="source-custom-input" value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} placeholder="내용 (예: 볼트, 자석)" aria-label="내용" />
+          <input className="source-custom-input" inputMode="numeric" value={draft.amount} onChange={(e) => setDraft({ ...draft, amount: e.target.value })} placeholder="금액(원)" aria-label="금액" />
+          <div className="form-actions">
+            {draft.id && <button type="button" className="btn btn-danger-ghost" onClick={deleteDraft}>삭제</button>}
+            <button type="button" className="btn btn-secondary" onClick={() => setDraft(null)}>취소</button>
+            <button type="button" className="btn btn-primary" onClick={saveDraft}>{draft.id ? '수정 저장' : '추가'}</button>
+          </div>
+        </div>
+      )}
+      {ex.lines.length === 0 ? (
+        <p className="hint">이 기간 지출이 없어요. 필라멘트 구매 금액은 「필라멘트」 화면에서 넣으면 자동으로 잡혀요.</p>
+      ) : (
+        <ul className="expense-list">
+          {ex.lines.map((l) => (
+            <li key={l.id}>
+              <button type="button" className="expense-row" onClick={() => openLine(l)}>
+                <span className="expense-date">{new Date(l.at).toLocaleDateString('ko-KR')}</span>
+                <span className="expense-badge">{l.category}</span>
+                <span className="expense-note">{l.note || '-'}</span>
+                <b>{formatWon(l.amount)}</b>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <h3 className="report-h">미입금 주문 {data.unpaid.length}건</h3>
       {data.unpaid.length === 0 ? (

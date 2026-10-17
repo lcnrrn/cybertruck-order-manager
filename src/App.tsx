@@ -535,6 +535,7 @@ export default function App() {
             )}
             {sheet === 'sales' && (
               <SalesReport
+                filament={filament}
                 orders={orders}
                 products={products}
                 period={period}
