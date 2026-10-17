@@ -36,6 +36,17 @@ export interface FilamentEntry {
   kind: 'purchase' | 'adjust';
   /** 없으면 기본(미지정) */
   typeId?: string;
+  /** 구매 금액(원) — 있으면 매출 정리의 「필라멘트」 지출로 잡힘 */
+  cost?: number;
+  /** 수정 시각 (기기 간 동기화 시 최신 수정이 이김) */
+  updatedAt?: number;
+  /** 삭제 표시(톰스톤) */
+  deleted?: boolean;
+}
+
+/** 삭제되지 않은 기록만 */
+export function liveEntries(state: Pick<FilamentState, 'entries'>): FilamentEntry[] {
+  return state.entries.filter((e) => !e.deleted);
 }
 
 export interface FilamentState {
@@ -246,7 +257,7 @@ export function pendingByType(orders: Order[], catalog: Product[], state: Filame
 export function stockByType(state: FilamentState, orders: Order[]): Record<string, number> {
   const m: Record<string, number> = {};
   for (const t of state.types) m[t.id] = 0;
-  for (const e of state.entries) {
+  for (const e of liveEntries(state)) {
     const k = e.typeId || DEFAULT_TYPE_ID;
     m[k] = (m[k] || 0) + e.grams;
   }
@@ -259,7 +270,7 @@ export function consumedTotal(orders: Order[]): number {
 }
 
 export function currentStock(state: FilamentState, orders: Order[]): number {
-  return state.entries.reduce((s, e) => s + e.grams, 0) - consumedTotal(orders);
+  return liveEntries(state).reduce((s, e) => s + e.grams, 0) - consumedTotal(orders);
 }
 
 const DAY = 86400000;
@@ -281,7 +292,7 @@ export function avgDailyUsage(orders: Order[], now = Date.now()): number {
 
 export function typeHasHistory(state: FilamentState, orders: Order[], id: string): boolean {
   return (
-    state.entries.some((e) => (e.typeId || DEFAULT_TYPE_ID) === id) ||
+    liveEntries(state).some((e) => (e.typeId || DEFAULT_TYPE_ID) === id) ||
     orders.some((o) => deductedUse(o)[id] !== undefined)
   );
 }

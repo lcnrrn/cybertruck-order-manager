@@ -1,4 +1,5 @@
 import { getSheetId } from './config';
+import { mergeById, mergeExpenseStates, normalizeExpenses } from '../expenses';
 import {
   SETTINGS_APPLIED_EVENT,
   SETTING_LS_KEYS,
@@ -17,7 +18,7 @@ import {
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 export const SETTINGS_SHEET_NAME = '설정';
 const HEADERS = ['key', 'json', 'updatedAt'];
-const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament', 'production'];
+const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament', 'production', 'expenses'];
 
 interface Entry {
   json: string; // '' = default / not set
@@ -106,7 +107,7 @@ function writeLocal(key: SettingKey, e: Entry): void {
 }
 
 interface FilamentLike {
-  entries?: { id?: string; at?: number; typeId?: string }[];
+  entries?: { id?: string; at?: number; typeId?: string; updatedAt?: number }[];
   threshold?: number;
   types?: { id?: string }[];
   materials?: string[];
@@ -127,11 +128,8 @@ function mergeFilament(local: Entry | null, remote: Entry | null): Entry | null 
   if (!remote) return local;
   const l = parseFil(local.json);
   const r = parseFil(remote.json);
-  const byId = new Map<string, { id?: string; at?: number; typeId?: string }>();
-  for (const e of [...(r.entries || []), ...(l.entries || [])]) {
-    if (e && e.id && !byId.has(e.id)) byId.set(e.id, e);
-  }
-  const entries = Array.from(byId.values()).sort((a, b) => (a.at || 0) - (b.at || 0));
+  // id별 병합: 금액 수정·삭제는 updatedAt이 큰 쪽이 이김 (같으면 시트 쪽)
+  const entries = mergeById(r.entries || [], l.entries || []).sort((a, b) => (a.at || 0) - (b.at || 0));
   const newer = local.updatedAt > remote.updatedAt ? l : r;
   const older = newer === l ? r : l;
   const threshold = typeof newer.threshold === 'number' ? newer.threshold : (l.threshold ?? r.threshold ?? 1000);
@@ -148,6 +146,20 @@ function mergeFilament(local: Entry | null, remote: Entry | null): Entry | null 
   if (materials) out.materials = materials;
   if (colors) out.colors = colors;
   return { json: JSON.stringify(out), updatedAt: Math.max(local.updatedAt, remote.updatedAt) };
+}
+
+function mergeExpensesEntry(local: Entry | null, remote: Entry | null): Entry | null {
+  if (!local) return remote;
+  if (!remote) return local;
+  const parse = (j: string) => {
+    try {
+      return normalizeExpenses(JSON.parse(j));
+    } catch {
+      return normalizeExpenses(null);
+    }
+  };
+  const m = mergeExpenseStates(parse(local.json), parse(remote.json), local.updatedAt > remote.updatedAt);
+  return { json: JSON.stringify(m), updatedAt: Math.max(local.updatedAt, remote.updatedAt) };
 }
 
 let running: Promise<boolean> | null = null;
@@ -175,6 +187,7 @@ async function syncSettingsOnce(token: string): Promise<boolean> {
     const r = remote.get(key) || null;
     let m: Entry | null;
     if (key === 'filament') m = mergeFilament(l, r);
+    else if (key === 'expenses') m = mergeExpensesEntry(l, r);
     else if (!l) m = r;
     else if (!r) m = l;
     else m = l.updatedAt > r.updatedAt ? l : r; // tie → remote (first pusher) wins
