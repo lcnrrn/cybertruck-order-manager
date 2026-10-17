@@ -22,6 +22,7 @@ export const ORDERS_HEADERS = [
   'filamentG',
   'filamentAt',
   'filamentByType',
+  'progress',
 ] as const;
 
 /** Built-in defaults for this user's deployment (public OAuth client id + their sheet). */

@@ -26,6 +26,10 @@ export interface Order {
   filamentUse?: Record<string, number>;
   /** 제품 구성별 필라멘트 종류 선택 {'제품명#순번': filamentTypeId} */
   filamentPick?: Record<string, string>;
+  /** 사용자가 정한 제작 순번 (대기/제작중만 의미 있음) */
+  seq?: number;
+  /** 품목별 제작 완료 개수 {itemKey: doneCount} */
+  doneMap?: Record<string, number>;
   createdAt: number;
   updatedAt: number;
 }

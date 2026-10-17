@@ -57,6 +57,10 @@ function orderToRow(o: Order): string[] {
     o.filamentUse || o.filamentPick
       ? JSON.stringify({ u: o.filamentUse, p: o.filamentPick })
       : '',
+    // R: 순번·부분 제작 — id를 함께 저장해 구버전 앱이 A:Q만 다시 써서 행이 밀려도 엉뚱한 주문에 붙지 않게
+    o.seq || (o.doneMap && Object.keys(o.doneMap).length)
+      ? JSON.stringify({ i: o.id, s: o.seq, d: o.doneMap })
+      : '',
   ];
 }
 
@@ -89,6 +93,7 @@ function rowToOrder(row: string[]): Order | null {
     filamentG: optNum(row[14]),
     filamentAt: optNum(row[15]),
     ...parseFilamentCol(row[16]),
+    ...parseProgressCol(row[17], id),
   };
 }
 
@@ -102,6 +107,22 @@ function parseFilamentCol(raw: string | undefined): Pick<Order, 'filamentUse' | 
     const p = strMap(j.p);
     if (u) out.filamentUse = u;
     if (p) out.filamentPick = p;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq' | 'doneMap'> {
+  const t = String(raw ?? '').trim();
+  if (!t) return {};
+  try {
+    const j = JSON.parse(t) as { i?: unknown; s?: unknown; d?: unknown };
+    if (j.i !== id) return {};
+    const out: Pick<Order, 'seq' | 'doneMap'> = {};
+    if (typeof j.s === 'number' && j.s > 0) out.seq = j.s;
+    const d = numMap(j.d);
+    if (d) out.doneMap = d;
     return out;
   } catch {
     return {};
@@ -157,7 +178,7 @@ export async function ensureOrdersSheet(accessToken: string): Promise<void> {
 export async function pullOrders(accessToken: string): Promise<Order[]> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:Q`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:R`);
   const res = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}`);
   if (!res.ok) {
     throw new Error(`시트 읽기 실패: ${await readError(res)}`);
@@ -179,7 +200,7 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
 export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:Q`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:R`);
 
   const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}:clear`, {
     method: 'POST',
