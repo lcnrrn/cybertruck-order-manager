@@ -6,6 +6,7 @@ import { orderTimestamp, resolvePeriodBounds } from '../period';
 import type { Product } from '../products';
 import { isUnpaid } from '../production';
 import { loadFilament, orderUseByType } from '../filament';
+import { compactSeq, compareOrders, isActive, moveSeq, setSeq } from '../sequence';
 
 /** 완료 전환 시 필라멘트 차감 기록, 완료 해제 시 되돌림 (중복 차감 방지) */
 function applyFilament(prev: Order, next: Order, catalog: Product[]): Order {
@@ -72,8 +73,9 @@ export function useOrders(products: Product[] = []) {
   }, []);
 
   const updateOrder = useCallback((id: string, patch: Partial<Order>) => {
-    setOrders((prev) =>
-      prev.map((o) => {
+    setOrders((prev) => {
+      let leftQueue = false;
+      const mapped = prev.map((o) => {
         if (o.id !== id) return o;
         let next: Order = { ...o, ...patch, id: o.id, updatedAt: Date.now() };
         next = applyFilament(o, next, productsRef.current);
@@ -91,13 +93,46 @@ export function useOrders(products: Product[] = []) {
           if (tn) next.trackingNumber = tn;
           else delete next.trackingNumber;
         }
+        if ('doneMap' in patch && (!patch.doneMap || !Object.keys(patch.doneMap).length)) delete next.doneMap;
+        if (!isActive(next) && next.seq !== undefined) {
+          delete next.seq;
+          leftQueue = true;
+        }
+        return next;
+      });
+      return leftQueue ? compactSeq(mapped) : mapped;
+    });
+  }, []);
+
+  const setOrderSeq = useCallback((id: string, n: number | null) => {
+    setOrders((prev) => setSeq(prev, id, n));
+  }, []);
+
+  const moveOrder = useCallback((id: string, dir: -1 | 1) => {
+    setOrders((prev) => moveSeq(prev, id, dir));
+  }, []);
+
+  /** 품목 제작 개수 지정. 하나라도 만들면 대기 → 제작중 자동 전환 */
+  const setItemDone = useCallback((id: string, key: string, count: number) => {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const doneMap = { ...(o.doneMap || {}) };
+        if (count > 0) doneMap[key] = count;
+        else delete doneMap[key];
+        const next: Order = { ...o, doneMap, updatedAt: Date.now() };
+        if (!Object.keys(doneMap).length) delete next.doneMap;
+        if (count > 0 && o.status === '대기') next.status = '제작중';
         return next;
       }),
     );
   }, []);
 
   const deleteOrder = useCallback((id: string) => {
-    setOrders((prev) => prev.filter((o) => o.id !== id));
+    setOrders((prev) => {
+      const rest = prev.filter((o) => o.id !== id);
+      return prev.find((o) => o.id === id)?.seq !== undefined ? compactSeq(rest) : rest;
+    });
   }, []);
 
   const setStatus = useCallback(
@@ -135,6 +170,9 @@ export function useOrders(products: Product[] = []) {
     deleteOrder,
     setStatus,
     importOrders,
+    setOrderSeq,
+    moveOrder,
+    setItemDone,
   };
 }
 
@@ -178,9 +216,6 @@ export function useFilteredOrders(
           .join(' ');
         return hay.includes(q);
       })
-      .sort((a, b) => {
-        if (a.priority !== b.priority) return a.priority ? -1 : 1;
-        return (b.createdAt || b.updatedAt) - (a.createdAt || a.updatedAt);
-      });
+      .sort(compareOrders);
   }, [orders, statusFilter, sourceFilter, query, period, products]);
 }

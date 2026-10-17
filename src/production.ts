@@ -111,6 +111,39 @@ export function orderHasProduct(order: Order, product: string, catalog: Product[
   return r.products.some((p) => p.name === product);
 }
 
+/* ───────── 품목별 부분 제작 ───────── */
+
+export interface OrderItemProgress {
+  key: string;
+  label: string;
+  qty: number;
+  done: number;
+  matched: boolean;
+}
+
+export function otherKey(text: string): string {
+  return `기타:${text}`;
+}
+
+/** 주문 1건 품목 목록 + 제작 완료 개수 */
+export function orderItemProgress(order: Pick<Order, 'items' | 'doneMap'>, names: string[]): OrderItemProgress[] {
+  const r = parseOrderProducts(order.items, names);
+  const done = (k: string, q: number) => Math.max(0, Math.min(q, Math.floor(order.doneMap?.[k] || 0)));
+  return [
+    ...r.products.map((p) => ({ key: p.name, label: p.name, qty: p.qty, done: done(p.name, p.qty), matched: true })),
+    ...r.others.map((x) => ({ key: otherKey(x.text), label: x.text, qty: x.qty, done: done(otherKey(x.text), x.qty), matched: false })),
+  ];
+}
+
+export function progressTotals(list: OrderItemProgress[]): { done: number; total: number } {
+  return list.reduce((a, x) => ({ done: a.done + x.done, total: a.total + x.qty }), { done: 0, total: 0 });
+}
+
+/** 남은(아직 안 만든) 수량 */
+export function remainingQty(order: Pick<Order, 'doneMap'>, key: string, qty: number): number {
+  return Math.max(0, qty - Math.max(0, Math.floor(order.doneMap?.[key] || 0)));
+}
+
 export function buildProductionSummary(orders: Order[], catalog: Product[]): ProductionSummary {
   const names = catalog.map((c) => c.name);
   const map = new Map<string, ProductionRow>();
@@ -118,16 +151,18 @@ export function buildProductionSummary(orders: Order[], catalog: Product[]): Pro
   let orderCount = 0;
   for (const o of orders) {
     if (o.status !== '대기' && o.status !== '제작중') continue;
-    orderCount += 1;
     const r = parseOrderProducts(o.items, names);
-    for (const p of r.products) {
+    const prods = r.products.map((p) => ({ ...p, qty: remainingQty(o, p.name, p.qty) })).filter((p) => p.qty > 0);
+    const oth = r.others.map((x) => ({ ...x, qty: remainingQty(o, otherKey(x.text), x.qty) })).filter((x) => x.qty > 0);
+    if (prods.length || oth.length) orderCount += 1;
+    for (const p of prods) {
       const row = map.get(p.name) ?? { name: p.name, total: 0, waiting: 0, making: 0 };
       row.total += p.qty;
       if (o.status === '대기') row.waiting += p.qty;
       else row.making += p.qty;
       map.set(p.name, row);
     }
-    for (const x of r.others) others.push({ ...x, orderName: o.name });
+    for (const x of oth) others.push({ ...x, orderName: o.name });
   }
   const rows = names.filter((n) => map.has(n)).map((n) => map.get(n)!);
   const total = rows.reduce((s, r) => s + r.total, 0) + others.reduce((s, x) => s + x.qty, 0);
@@ -157,15 +192,16 @@ export function isUnpaid(order: Order, catalog: Product[]): boolean {
 }
 
 /** 주문 1건 필라멘트 소모량(g) */
-export function orderGrams(order: Order, catalog: Product[]): number {
+export function orderGrams(order: Order, catalog: Product[], remainingOnly = false): number {
   const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
   let sum = 0;
   for (const p of r.products) {
+    const qty = remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty;
     const prod = catalog.find((c) => c.name === p.name);
     const g = prod?.filaments?.length
       ? prod.filaments.reduce((a, f) => a + (Number.isFinite(f.grams) && f.grams > 0 ? f.grams : 0), 0)
       : prod?.grams || 0;
-    sum += g * p.qty;
+    sum += g * qty;
   }
   return sum;
 }
@@ -173,7 +209,7 @@ export function orderGrams(order: Order, catalog: Product[]): number {
 export function pendingGrams(orders: Order[], catalog: Product[]): number {
   return orders
     .filter((o) => o.status === '대기' || o.status === '제작중')
-    .reduce((s, o) => s + orderGrams(o, catalog), 0);
+    .reduce((s, o) => s + orderGrams(o, catalog, true), 0);
 }
 
 export function formatWon(n: number): string {
@@ -219,12 +255,12 @@ export function saveProductionSettings(s: ProductionSettings): void {
 }
 
 /** 주문 1건 출력 시간(분) */
-export function orderMinutes(order: Order, catalog: Product[]): number {
+export function orderMinutes(order: Order, catalog: Product[], remainingOnly = false): number {
   const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
   let sum = 0;
   for (const p of r.products) {
     const prod = catalog.find((c) => c.name === p.name);
-    sum += (prod?.minutes || 0) * p.qty;
+    sum += (prod?.minutes || 0) * (remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty);
   }
   return sum;
 }
@@ -232,7 +268,7 @@ export function orderMinutes(order: Order, catalog: Product[]): number {
 export function pendingMinutes(orders: Order[], catalog: Product[]): number {
   return orders
     .filter((o) => o.status === '대기' || o.status === '제작중')
-    .reduce((s, o) => s + orderMinutes(o, catalog), 0);
+    .reduce((s, o) => s + orderMinutes(o, catalog, true), 0);
 }
 
 export function formatDuration(min: number): string {

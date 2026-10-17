@@ -1,6 +1,6 @@
 import type { Order } from './types';
 import type { Product } from './products';
-import { parseOrderProducts } from './production';
+import { parseOrderProducts, remainingQty } from './production';
 import { markSettingChanged } from './settingsMeta';
 
 const KEY = 'cybertruck-filament-v1';
@@ -166,9 +166,10 @@ export interface OrderSlot {
 }
 
 export function orderSlots(
-  order: Pick<Order, 'items' | 'filamentPick'>,
+  order: Pick<Order, 'items' | 'filamentPick' | 'doneMap'>,
   catalog: Product[],
   state: FilamentState,
+  remainingOnly = false,
 ): OrderSlot[] {
   const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
   const out: OrderSlot[] = [];
@@ -181,7 +182,7 @@ export function orderSlots(
       out.push({
         product: p.name,
         idx,
-        qty: p.qty,
+        qty: remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty,
         grams: part.grams,
         defaultTypeId: part.typeId,
         typeId: valid || autoPickType(part.typeId, order.items, state),
@@ -192,12 +193,13 @@ export function orderSlots(
 }
 
 export function orderUseByType(
-  order: Pick<Order, 'items' | 'filamentPick'>,
+  order: Pick<Order, 'items' | 'filamentPick' | 'doneMap'>,
   catalog: Product[],
   state: FilamentState,
+  remainingOnly = false,
 ): Record<string, number> {
   const m: Record<string, number> = {};
-  for (const s of orderSlots(order, catalog, state)) m[s.typeId] = (m[s.typeId] || 0) + s.grams * s.qty;
+  for (const s of orderSlots(order, catalog, state, remainingOnly)) m[s.typeId] = (m[s.typeId] || 0) + s.grams * s.qty;
   return m;
 }
 
@@ -222,7 +224,8 @@ export function pendingBreakdownByType(orders: Order[], catalog: Product[], stat
   const m: Record<string, NeedLine[]> = {};
   for (const o of orders) {
     if (o.status !== '대기' && o.status !== '제작중') continue;
-    for (const s of orderSlots(o, catalog, state)) {
+    for (const s of orderSlots(o, catalog, state, true)) {
+      if (s.qty <= 0) continue;
       (m[s.typeId] ||= []).push({ orderId: o.id, orderName: o.name, product: s.product, qty: s.qty, gramsPerUnit: s.grams, total: s.grams * s.qty });
     }
   }
@@ -233,7 +236,7 @@ export function pendingByType(orders: Order[], catalog: Product[], state: Filame
   const m: Record<string, number> = {};
   for (const o of orders) {
     if (o.status !== '대기' && o.status !== '제작중') continue;
-    for (const [k, g] of Object.entries(orderUseByType(o, catalog, state))) m[k] = (m[k] || 0) + g;
+    for (const [k, g] of Object.entries(orderUseByType(o, catalog, state, true))) m[k] = (m[k] || 0) + g;
   }
   return m;
 }
