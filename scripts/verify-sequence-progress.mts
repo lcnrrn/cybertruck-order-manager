@@ -40,3 +40,13 @@ assert.equal(buildProductionSummary([done], DEFAULT_PRODUCTS).orderCount, 0);
 const cat = DEFAULT_PRODUCTS.map((p) => ({ ...p, grams: 10, filaments: undefined }));
 assert.equal(pendingGrams([o1], cat), 20);
 console.log('sequence + progress OK');
+
+// 추가 메모는 제작 체크·만들 제품에 나오면 안 됨
+const withMemo = mk('m', 1, { items: '휴대폰 마운트 거치대 x2 / 블랙으로 부탁해요\n빨리 보내주세요', doneMap: { '휴대폰 마운트 거치대': 1 } });
+const pm = orderItemProgress(withMemo, names);
+assert.deepEqual(pm.map((x) => x.key), ['휴대폰 마운트 거치대']);
+assert.deepEqual(progressTotals(pm), { done: 1, total: 2 });
+const sm = buildProductionSummary([withMemo], DEFAULT_PRODUCTS);
+assert.equal(sm.others.length, 0);
+assert.equal(sm.total, 1);
+console.log('memo exclusion OK');

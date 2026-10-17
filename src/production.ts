@@ -131,7 +131,7 @@ export function orderItemProgress(order: Pick<Order, 'items' | 'doneMap'>, names
   const done = (k: string, q: number) => Math.max(0, Math.min(q, Math.floor(order.doneMap?.[k] || 0)));
   return [
     ...r.products.map((p) => ({ key: p.name, label: p.name, qty: p.qty, done: done(p.name, p.qty), matched: true })),
-    ...r.others.map((x) => ({ key: otherKey(x.text), label: x.text, qty: x.qty, done: done(otherKey(x.text), x.qty), matched: false })),
+    // 카탈로그에 없는 조각은 「추가 메모」(빨간 글씨)로 보여지는 부분이라 제작 목록에서 제외
   ];
 }
 
@@ -153,7 +153,8 @@ export function buildProductionSummary(orders: Order[], catalog: Product[]): Pro
     if (o.status !== '대기' && o.status !== '제작중') continue;
     const r = parseOrderProducts(o.items, names);
     const prods = r.products.map((p) => ({ ...p, qty: remainingQty(o, p.name, p.qty) })).filter((p) => p.qty > 0);
-    const oth = r.others.map((x) => ({ ...x, qty: remainingQty(o, otherKey(x.text), x.qty) })).filter((x) => x.qty > 0);
+    // 메모(카탈로그에 없는 조각)는 제작 수량에 넣지 않음
+    const oth: { text: string; qty: number }[] = [];
     if (prods.length || oth.length) orderCount += 1;
     for (const p of prods) {
       const row = map.get(p.name) ?? { name: p.name, total: 0, waiting: 0, making: 0 };
