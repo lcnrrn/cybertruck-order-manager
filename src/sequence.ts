@@ -4,8 +4,22 @@ export function isActive(o: Pick<Order, 'status'>): boolean {
   return o.status === '대기' || o.status === '제작중';
 }
 
-/** 정렬: ★우선 → 순번 오름차순 → 나머지는 최신 주문 먼저 */
+const ts = (o: Order) => o.createdAt || o.updatedAt || 0;
+
+/** 정렬: ★우선 → 접수일 오래된 순(선착순) → id (안정적) */
 export function compareOrders(a: Order, b: Order): number {
+  if (a.priority !== b.priority) return a.priority ? -1 : 1;
+  return ts(a) - ts(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** 완료 탭: ★우선 → 최근 접수 먼저 → id */
+export function compareOrdersNewest(a: Order, b: Order): number {
+  if (a.priority !== b.priority) return a.priority ? -1 : 1;
+  return ts(b) - ts(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
+/** (사용 중지) 예전 순번 정렬 — 저장된 seq는 무시 */
+export function compareOrdersBySeq(a: Order, b: Order): number {
   if (a.priority !== b.priority) return a.priority ? -1 : 1;
   const sa = isActive(a) ? a.seq : undefined;
   const sb = isActive(b) ? b.seq : undefined;
@@ -21,7 +35,7 @@ export function compareOrders(a: Order, b: Order): number {
 function numberedIds(orders: Order[]): string[] {
   return orders
     .filter((o) => isActive(o) && o.seq !== undefined)
-    .sort((a, b) => (a.seq! - b.seq!) || compareOrders(a, b))
+    .sort((a, b) => (a.seq! - b.seq!) || compareOrdersBySeq(a, b))
     .map((o) => o.id);
 }
 
@@ -60,7 +74,7 @@ export function setSeq(orders: Order[], id: string, n: number | null, now = Date
 export function moveSeq(orders: Order[], id: string, dir: -1 | 1, now = Date.now()): Order[] {
   const target = orders.find((o) => o.id === id);
   if (!target || !isActive(target)) return orders;
-  const list = orders.filter(isActive).sort(compareOrders);
+  const list = orders.filter(isActive).sort(compareOrdersBySeq);
   const i = list.findIndex((o) => o.id === id);
   const j = i + dir;
   if (j < 0 || j >= list.length || list[j].priority !== target.priority) return orders;

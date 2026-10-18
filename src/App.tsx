@@ -108,8 +108,6 @@ export default function App() {
     deleteOrder,
     setStatus,
     importOrders,
-    setOrderSeq,
-    moveOrder,
     setItemDone,
   } = useOrders(products);
   const [filter, setFilter] = useState<StatusFilter>(loadStatusFilter);
@@ -337,14 +335,6 @@ export default function App() {
     onTogglePriority: (id: string) => {
       const target = orders.find((x) => x.id === id);
       if (target) updateOrder(id, { priority: !target.priority });
-    },
-    onSetSeq: (id: string, n: number | null) => setOrderSeq(id, n),
-    onMove: (id: string, dir: -1 | 1) => {
-      moveOrder(id, dir);
-      // 이동한 카드가 화면 밖으로 나가지 않게 (최소 스크롤)
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => document.getElementById(`order-${id}`)?.scrollIntoView({ block: 'nearest' })),
-      );
     },
     onItemDone: (id: string, key: string, count: number) => setItemDone(id, key, count),
   };

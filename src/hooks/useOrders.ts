@@ -7,7 +7,7 @@ import type { Product } from '../products';
 import { isUnpaid } from '../production';
 import { loadFilament, orderUseByType } from '../filament';
 import { markOrderDeleted } from '../deletedOrders';
-import { compactSeq, compareOrders, isActive, moveSeq, setSeq } from '../sequence';
+import { compactSeq, compareOrders, compareOrdersNewest, isActive, moveSeq, setSeq } from '../sequence';
 
 /** 완료 전환 시 필라멘트 차감 기록, 완료 해제 시 되돌림 (중복 차감 방지) */
 function applyFilament(prev: Order, next: Order, catalog: Product[]): Order {
@@ -218,6 +218,6 @@ export function useFilteredOrders(
           .join(' ');
         return hay.includes(q);
       })
-      .sort(compareOrders);
+      .sort(statusFilter === '완료' ? compareOrdersNewest : compareOrders);
   }, [orders, statusFilter, sourceFilter, query, period, products]);
 }

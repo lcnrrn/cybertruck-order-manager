@@ -17,8 +17,6 @@ interface Props {
   copyText: (text: string, okMessage: string) => void;
   onTogglePriority: (id: string) => void;
   onTogglePaid: (id: string) => void;
-  onSetSeq: (id: string, n: number | null) => void;
-  onMove: (id: string, dir: -1 | 1) => void;
   onItemDone: (id: string, key: string, count: number) => void;
 }
 
@@ -31,8 +29,6 @@ export function OrderCard({
   copyText,
   onTogglePriority,
   onTogglePaid,
-  onSetSeq,
-  onMove,
   onItemDone,
 }: Props) {
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
@@ -42,43 +38,17 @@ export function OrderCard({
   const totals = progressTotals(progress);
   const allDone = totals.total > 0 && totals.done >= totals.total;
 
-  const askSeq = () => {
-    const cur = order.seq ? String(order.seq) : '';
-    const v = window.prompt('제작 순번 (비우면 순번 해제)', cur);
-    if (v === null) return;
-    const n = parseInt(v.replace(/\D/g, ''), 10);
-    onSetSeq(order.id, Number.isFinite(n) && n > 0 ? n : null);
-  };
+
 
   return (
     <article id={`order-${order.id}`} className={`order-card ${order.priority ? 'priority' : ''}`}>
       <header className="order-card-header">
         <div className="order-title-row">
-          {active ? (
-            <button
-              type="button"
-              className={`seq-badge ${order.seq ? 'on' : ''}`}
-              onClick={askSeq}
-              aria-label="제작 순번 지정"
-            >
-              {order.seq ? `${order.seq}번` : '#순번'}
-            </button>
-          ) : null}
           <h2 className="order-name">{order.name}</h2>
           <span className="order-date" title={new Date(createdTs).toLocaleString('ko-KR')}>
             {formatOrderDate(createdTs)} 접수
             {active ? <em> · {relativeLabel(createdTs)}</em> : null}
           </span>
-          {active ? (
-            <span className="seq-move" role="group" aria-label="순서 이동">
-              <button type="button" className="btn-icon seq-move-btn" aria-label="위로" onClick={() => onMove(order.id, -1)}>
-                ▲
-              </button>
-              <button type="button" className="btn-icon seq-move-btn" aria-label="아래로" onClick={() => onMove(order.id, 1)}>
-                ▼
-              </button>
-            </span>
-          ) : null}
           <button
             type="button"
             className={`btn-icon priority-btn ${order.priority ? 'on' : ''}`}
