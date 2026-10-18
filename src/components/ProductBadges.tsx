@@ -20,7 +20,7 @@ export function ProductBadges({ items, products, className }: Props) {
     return <span className={className}>주문 내용 없음</span>;
   }
 
-  const { selected, note } = parseItemsAgainstCatalog(raw, products);
+  const { selected, note, qty } = parseItemsAgainstCatalog(raw, products);
 
   if (selected.length === 0 && !note) {
     return <span className={className}>{raw}</span>;
@@ -51,6 +51,7 @@ export function ProductBadges({ items, products, className }: Props) {
             title={name}
           >
             {name}
+            {(qty[name] || 1) > 1 ? <b className="product-badge-qty"> ×{qty[name]}</b> : null}
           </span>
         );
       })}

@@ -66,6 +66,7 @@ export function OrderForm({
   const [values, setValues] = useState<OrderFormValues>(empty);
   const [selected, setSelected] = useState<string[]>([]);
   const [itemsNote, setItemsNote] = useState('');
+  const [qty, setQty] = useState<Record<string, number>>({});
   const [amountText, setAmountText] = useState('');
 
   useEffect(() => {
@@ -87,10 +88,12 @@ export function OrderForm({
       setPick(initial.filamentPick || {});
       const parsed = parseItemsAgainstCatalog(initial.items, products);
       setSelected(parsed.selected);
+      setQty(parsed.qty);
       setItemsNote(parsed.note);
     } else {
       setValues(empty);
       setSelected([]);
+      setQty({});
       setItemsNote('');
       setAmountText('');
       setPick({});
@@ -107,6 +110,10 @@ export function OrderForm({
     );
   }
 
+  function changeQty(name: string, d: number) {
+    setQty((q) => ({ ...q, [name]: Math.max(1, Math.min(99, (q[name] || 1) + d)) }));
+  }
+
   function orderedSelected(): string[] {
     const names = products.map((p) => p.name);
     const ordered = names.filter((n) => selected.includes(n));
@@ -120,7 +127,7 @@ export function OrderForm({
       window.alert('이름을 입력해 주세요.');
       return;
     }
-    const items = joinItems(orderedSelected(), itemsNote);
+    const items = joinItems(orderedSelected(), itemsNote, qty);
     const amtRaw = amountText.replace(/[^\d]/g, '');
     const keepPick = Object.keys(pick).length ? pick : undefined;
     onSubmit({
@@ -183,6 +190,20 @@ export function OrderForm({
             );
           })}
         </div>
+        {selected.length > 0 && (
+          <ul className="qty-list" aria-label="제품별 수량">
+            {orderedSelected().map((name) => (
+              <li key={name}>
+                <span className="qty-name">{name}</span>
+                <span className="qty-stepper">
+                  <button type="button" className="btn-icon" aria-label="수량 빼기" onClick={() => changeQty(name, -1)} disabled={(qty[name] || 1) <= 1}>−</button>
+                  <b>{qty[name] || 1}</b>
+                  <button type="button" className="btn-icon" aria-label="수량 더하기" onClick={() => changeQty(name, 1)}>+</button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         {products.length === 0 && (
           <p className="hint">
             제품 목록이 비어 있습니다. 「제품 관리」에서 추가하세요.
@@ -193,14 +214,14 @@ export function OrderForm({
           <textarea
             value={itemsNote}
             onChange={(e) => setItemsNote(e.target.value)}
-            placeholder="목록에 없는 내용 · 수량 · 색상 등"
+            placeholder="목록에 없는 내용 · 색상 등 (수량은 위에서)"
             rows={2}
           />
         </label>
         {(selected.length > 0 || itemsNote.trim()) && (
           <p className="product-preview hint">
             미리보기:{' '}
-            {orderedSelected().join(' / ')}
+            {joinItems(orderedSelected(), '', qty).replace(/ x(\d+)/g, ' ×$1')}
             {itemsNote.trim() ? (
               <>
                 {selected.length > 0 ? ' / ' : ''}
@@ -210,7 +231,7 @@ export function OrderForm({
           </p>
         )}
         {filament && (() => {
-          const slots = orderSlots({ items: joinItems(orderedSelected(), itemsNote), filamentPick: pick }, products, filament);
+          const slots = orderSlots({ items: joinItems(orderedSelected(), itemsNote, qty), filamentPick: pick }, products, filament);
           if (slots.length === 0) return null;
           const opts = filament.types.filter((t) => !t.hidden);
           return (
@@ -302,7 +323,7 @@ export function OrderForm({
       <fieldset className="field money-field">
         <legend>금액 · 입금</legend>
         {(() => {
-          const preview = { items: joinItems(orderedSelected(), itemsNote) } as Order;
+          const preview = { items: joinItems(orderedSelected(), itemsNote, qty) } as Order;
           const auto = autoOrderAmount(preview, products);
           const g = orderGrams(preview, products);
           return (

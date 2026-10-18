@@ -294,12 +294,24 @@ export function scoreCatalogMatch(part: string, catalogName: string): number {
  * Split items by ` / ` or `,` and match catalog names (best-effort).
  * Strips price tokens first. Unmatched fragments become the free-text note.
  */
+const ITEM_QTY_RE = /\s*(?:[xX×]\s*(\d{1,3})|(\d{1,3})\s*(?:개|ea|EA|세트|셋트|set|SET|pcs))\s*$/;
+
+/** 조각 끝의 수량 표기(x3, ×3, 3개, 3세트) 분리 */
+export function splitItemQty(part: string): { text: string; qty: number } {
+  const m = part.match(ITEM_QTY_RE);
+  if (m && m.index !== undefined && m.index > 0) {
+    const qty = Number(m[1] || m[2]) || 1;
+    return { text: part.slice(0, m.index).trim(), qty: Math.max(1, qty) };
+  }
+  return { text: part.trim(), qty: 1 };
+}
+
 export function parseItemsAgainstCatalog(
   items: string,
   catalog: Product[] | string[],
-): { selected: string[]; note: string } {
+): { selected: string[]; note: string; qty: Record<string, number> } {
   const raw = stripItemPrices(items || '').trim();
-  if (!raw) return { selected: [], note: '' };
+  if (!raw) return { selected: [], note: '', qty: {} };
 
   const names = catalog.map((c) => (typeof c === 'string' ? c : c.name));
 
@@ -308,59 +320,66 @@ export function parseItemsAgainstCatalog(
     .map((p) => stripItemPrices(p).trim())
     .filter(Boolean);
 
-  const selectedSet = new Set<string>();
+  const qty: Record<string, number> = {};
   const extras: string[] = [];
-  const used = new Set<string>();
+
+  // 이미 고른 제품은 뒤로 (같은 점수일 때 다른 제품 우선 — 기존 동작 유지), 없으면 같은 제품 수량 합산
+  const bestName = (text: string): string | null => bestOf(text, true) ?? bestOf(text, false);
+  const bestOf = (text: string, skipUsed: boolean): string | null => {
+    let best: string | null = null;
+    let bestScore = 0;
+    for (const name of names) {
+      if (skipUsed && qty[name]) continue;
+      const score = scoreCatalogMatch(text, name);
+      // 같은 점수면 더 긴(구체적인) 이름 우선
+      if (score > bestScore || (score > 0 && score === bestScore && best && name.length > best.length)) {
+        bestScore = score;
+        best = name;
+      }
+    }
+    return best && bestScore >= 60 ? best : null;
+  };
 
   for (const part of parts) {
     if (isRequestPart(part)) {
       extras.push(part);
       continue;
     }
-
-    let best: string | null = null;
-    let bestScore = 0;
-    for (const name of names) {
-      if (used.has(name)) continue;
-      const score = scoreCatalogMatch(part, name);
-      if (score > bestScore) {
-        bestScore = score;
-        best = name;
+    const sp = splitItemQty(part);
+    const whole = bestName(part);
+    let name = whole;
+    let n = 1;
+    if (sp.qty > 1) {
+      const stripped = bestName(sp.text);
+      const countsInWhole = whole ? Array.from(whole.matchAll(/(\d{1,3})\s*(?:개|ea|세트|셋트|set|pcs)/gi)).map((m) => Number(m[1])) : [];
+      // 제품명 자체에 들어 있는 개수(예: '(풀셋 5개)')는 수량이 아님
+      if (whole && countsInWhole.includes(sp.qty) && (!stripped || stripped === whole)) {
+        name = whole;
+      } else if (stripped) {
+        name = stripped;
+        n = sp.qty;
       }
     }
-
-    // Prefer longer catalog names on ties (already handled by first max;
-    // bump specificity: if equal scores, prefer longer name)
-    if (best && bestScore >= 60) {
-      // Re-scan for equal score longer name
-      let chosen = best;
-      for (const name of names) {
-        if (used.has(name)) continue;
-        const score = scoreCatalogMatch(part, name);
-        if (
-          score === bestScore &&
-          name.length > chosen.length
-        ) {
-          chosen = name;
-        }
-      }
-      selectedSet.add(chosen);
-      used.add(chosen);
+    if (name) {
+      qty[name] = (qty[name] || 0) + n;
       continue;
     }
-
     extras.push(part);
   }
 
   return {
-    selected: names.filter((n) => selectedSet.has(n)),
+    selected: names.filter((n) => qty[n]),
     note: extras.join(' / '),
+    qty,
   };
 }
 
 /** Join selected catalog items + optional note into items string. */
-export function joinItems(selected: string[], note: string): string {
-  const parts = selected.map((s) => s.trim()).filter(Boolean);
+export function joinItems(selected: string[], note: string, qty?: Record<string, number>): string {
+  const parts = selected
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (qty && (qty[s] || 1) > 1 ? `${s} x${qty[s]}` : s));
   const n = note.trim();
   if (n) parts.push(n);
   return parts.join(' / ');

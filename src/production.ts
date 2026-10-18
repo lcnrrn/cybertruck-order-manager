@@ -18,7 +18,7 @@ export interface ProductionSummary {
   orderCount: number;
 }
 
-const QTY_RE = /\s*(?:[xX×]\s*(\d{1,3})|(\d{1,3})\s*(?:개|ea|EA|세트|set|SET|pcs))\s*$/;
+const QTY_RE = /\s*(?:[xX×]\s*(\d{1,3})|(\d{1,3})\s*(?:개|ea|EA|세트|셋트|set|SET|pcs))\s*$/;
 const QTY_PREFIX_RE = /^\s*(\d{1,3})\s*(?:개|ea|세트)\s+/;
 
 export function splitQty(part: string): { text: string; qty: number } {
@@ -42,7 +42,7 @@ export function splitQty(part: string): { text: string; qty: number } {
 export const MAX_QTY = 50;
 
 function countsInName(name: string): number[] {
-  return Array.from(name.matchAll(/(\d{1,3})\s*(?:개|ea|세트|set|pcs)/gi)).map((m) => Number(m[1]));
+  return Array.from(name.matchAll(/(\d{1,3})\s*(?:개|ea|세트|셋트|set|pcs)/gi)).map((m) => Number(m[1]));
 }
 
 function charOverlap(a: string, b: string): number {
