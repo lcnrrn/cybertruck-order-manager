@@ -1183,3 +1183,8 @@ a {
 .qty-stepper .btn-icon { min-width: 40px; min-height: 40px; font-size: 1.2rem; }
 .qty-stepper b { min-width: 24px; text-align: center; font-size: 1.05rem; }
 .product-badge-qty { font-weight: 800; }
+
+/* 접수일 */
+.order-title-row { flex-wrap: wrap; }
+.order-date { order: 10; flex-basis: 100%; font-size: 0.85rem; font-weight: 600; color: #93c5fd; }
+.order-date em { font-style: normal; font-weight: 400; color: var(--text-muted, #9ca3af); }

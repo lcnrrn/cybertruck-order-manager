@@ -1,3 +1,4 @@
+import { toYmd, withYmd } from './dates';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Order, PeriodRange, StatusFilter } from './types';
 import {
@@ -280,10 +281,15 @@ export default function App() {
         paid: values.paid || undefined,
         paidAt: values.paid ? values.paidAt : undefined,
         filamentPick: values.filamentPick,
+        // 접수일을 바꾼 경우에만 createdAt 변경 (시각은 유지)
+        ...(values.createdDate && values.createdDate !== toYmd(editing.createdAt || editing.updatedAt)
+          ? { createdAt: withYmd(editing.createdAt || editing.updatedAt, values.createdDate) }
+          : {}),
       });
       showToast('저장됨');
     } else {
       addOrder({
+        ...(values.createdDate && values.createdDate !== toYmd(Date.now()) ? { createdAt: withYmd(Date.now(), values.createdDate) } : {}),
         name: values.name,
         items: values.items,
         address: values.address,

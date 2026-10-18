@@ -1,3 +1,4 @@
+import { formatOrderDate, relativeLabel } from '../dates';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
@@ -36,6 +37,7 @@ export function OrderCard({
 }: Props) {
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
   const active = order.status === '대기' || order.status === '제작중';
+  const createdTs = order.createdAt || order.updatedAt;
   const progress = active ? orderItemProgress(order, products.map((p) => p.name)) : [];
   const totals = progressTotals(progress);
   const allDone = totals.total > 0 && totals.done >= totals.total;
@@ -63,6 +65,10 @@ export function OrderCard({
             </button>
           ) : null}
           <h2 className="order-name">{order.name}</h2>
+          <span className="order-date" title={new Date(createdTs).toLocaleString('ko-KR')}>
+            {formatOrderDate(createdTs)} 접수
+            {active ? <em> · {relativeLabel(createdTs)}</em> : null}
+          </span>
           {active ? (
             <span className="seq-move" role="group" aria-label="순서 이동">
               <button type="button" className="btn-icon seq-move-btn" aria-label="위로" onClick={() => onMove(order.id, -1)}>
