@@ -1,3 +1,4 @@
+import { parseSubmittedAt } from './dates';
 import type { Order } from './types';
 import { stripItemPrices } from './products';
 
@@ -203,6 +204,8 @@ export function parseNaverFormRows(rows: unknown[][]): Partial<Order>[] {
   );
   const shipIdx = findCol(headers, (n) => n.includes('택배비용'));
   const memoIdx = headers.findIndex((h) => isMemoHeader(h));
+  // 제출(응답) 일시 열 — 있으면 접수일로 사용
+  const dateIdx = findCol(headers, (n) => /제출|응답일|응답시간|작성일|등록일|일시|타임스탬프|timestamp/i.test(n));
   const productIdxs = headers
     .map((h, i) => (isProductHeader(h) ? i : -1))
     .filter((i) => i >= 0);
@@ -245,6 +248,7 @@ export function parseNaverFormRows(rows: unknown[][]): Partial<Order>[] {
       group: nick || undefined,
       status: '대기',
       priority: false,
+      ...(dateIdx >= 0 && parseSubmittedAt(row[dateIdx]) ? { createdAt: parseSubmittedAt(row[dateIdx]) } : {}),
     });
   }
 

@@ -1,3 +1,4 @@
+import { toYmd } from '../dates';
 import { useEffect, useState } from 'react';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
@@ -31,6 +32,8 @@ export type OrderFormValues = {
   paidAt?: number;
   /** 제품별 필라멘트 종류 직접 선택 */
   filamentPick?: Record<string, string>;
+  /** 접수일 YYYY-MM-DD */
+  createdDate: string;
 };
 
 interface Props {
@@ -52,6 +55,7 @@ const empty: OrderFormValues = {
   priority: false,
   trackingNumber: '',
   paid: false,
+  createdDate: '',
 };
 
 export function OrderForm({
@@ -83,6 +87,7 @@ export function OrderForm({
         amount: initial.amount,
         paid: Boolean(initial.paid),
         paidAt: initial.paidAt,
+        createdDate: toYmd(initial.createdAt || initial.updatedAt || Date.now()),
       });
       setAmountText(initial.amount !== undefined ? String(initial.amount) : '');
       setPick(initial.filamentPick || {});
@@ -91,7 +96,7 @@ export function OrderForm({
       setQty(parsed.qty);
       setItemsNote(parsed.note);
     } else {
-      setValues(empty);
+      setValues({ ...empty, createdDate: toYmd(Date.now()) });
       setSelected([]);
       setQty({});
       setItemsNote('');
@@ -156,6 +161,16 @@ export function OrderForm({
           placeholder="고객 이름"
           autoComplete="name"
           enterKeyHint="next"
+        />
+      </label>
+
+      <label className="field">
+        <span>접수일</span>
+        <input
+          type="date"
+          value={values.createdDate}
+          onChange={(e) => set('createdDate', e.target.value)}
+          aria-label="접수일"
         />
       </label>
 

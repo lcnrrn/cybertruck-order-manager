@@ -58,12 +58,12 @@ export function useOrders(products: Product[] = []) {
     setOrders(next);
   }, []);
 
-  const addOrder = useCallback((data: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addOrder = useCallback((data: Omit<Order, 'id' | 'createdAt' | 'updatedAt'> & { createdAt?: number }) => {
     const now = Date.now();
     let order: Order = {
       ...data,
       id: uid(),
-      createdAt: now,
+      createdAt: data.createdAt || now,
       updatedAt: now,
     };
     if (order.status === '완료') {
@@ -157,7 +157,7 @@ export function useOrders(products: Product[] = []) {
       priority: p.priority ?? false,
       trackingNumber: p.trackingNumber,
       amount: p.amount,
-      createdAt: now + i,
+      createdAt: p.createdAt && p.createdAt > 0 ? p.createdAt : now + i,
       updatedAt: now + i,
     }));
     setOrders((prev) => [...created, ...prev]);
