@@ -77,3 +77,46 @@ console.log('memo exclusion OK');
   assert.equal(autoOrderAmount(mk('z', 1, { items: '휴대폰 마운트 거치대 x3' }), priced), 3000);
   console.log('qty OK');
 }
+
+// 버그: 이름에 '3개'가 든 제품을 x3 주문하면 수량 1로 계산되던 문제
+{
+  const { orderSlots, normalizeFilament } = await import('../src/filament.ts');
+  const { orderGrams, parseOrderProducts } = await import('../src/production.ts');
+  const { parseItemsAgainstCatalog, joinItems } = await import('../src/products.ts');
+  const P = '안전벨트 클립 (뒷자석 3개)';
+  assert.ok(names.includes(P));
+  const cat = DEFAULT_PRODUCTS.map((p) => p.name === P
+    ? { ...p, filaments: [{ typeId: 'r', grams: 8.15 }, { typeId: 'w', grams: 0.8 }] }
+    : { ...p, filaments: undefined, grams: 0 });
+  const st = normalizeFilament({ types: [{ id: 'r', material: 'PETG', color: 'RED' }, { id: 'w', material: 'PETG', color: 'WHITE' }] });
+  for (const q of [1, 2, 3, 4]) {
+    const items = joinItems([P, '우체국 택배'], '3셋트 요청', { [P]: q });
+    assert.equal(parseItemsAgainstCatalog(items, cat).qty[P], q, `form qty ${q}`);
+    assert.deepEqual(parseOrderProducts(items, names).products, [{ name: P, qty: q }], `parse ${q}`);
+    const o = mk('f' + q, 1, { items });
+    assert.ok(Math.abs(orderGrams(o, cat) - 8.95 * q) < 1e-9, `grams ${q}`);
+    const slots = orderSlots(o, cat, st);
+    assert.equal(slots.length, 2);
+    assert.ok(slots.every((s) => s.qty === q));
+    assert.equal(orderItemProgress(o, names)[0].qty, q);
+  }
+  // 이름 속 개수만 있을 땐 여전히 1개
+  assert.equal(parseOrderProducts(P, names).products[0].qty, 1);
+  console.log('name-digit qty OK');
+}
+
+// 삭제한 주문이 동기화로 되살아나지 않음
+{
+  const { dropDeleted, mergeDeleted } = await import('../src/deletedOrders.ts');
+  const { mergeOrdersForSync } = await import('../src/google/sheets.ts');
+  const a = mk('keep', 1, { updatedAt: 100 } as never);
+  const b = mk('gone', 2, { seq: 5, updatedAt: 100 } as never);
+  const local = [a];
+  const remote = [a, b];
+  const del = { gone: 200 };
+  assert.deepEqual(mergeOrdersForSync(local, remote, del).map((o) => o.id), ['keep']);
+  assert.deepEqual(mergeOrdersForSync(local, remote, {}).map((o) => o.id).sort(), ['gone', 'keep']); // 예전 동작(되살아남)
+  assert.equal(dropDeleted([{ ...b, updatedAt: 300 }], del).length, 1); // 삭제 후 복원·수정된 건 유지
+  assert.deepEqual(mergeDeleted({ x: 1 }, { x: 5, y: 2 }), { x: 5, y: 2 });
+  console.log('delete tombstone OK');
+}
