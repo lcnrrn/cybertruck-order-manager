@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { compareOrders, moveSeq, setSeq, compactSeq } from '../src/sequence.ts';
+import { compareOrdersBySeq as compareOrders, compareOrders as byDate, compareOrdersNewest, moveSeq, setSeq, compactSeq } from '../src/sequence.ts';
 import { buildProductionSummary, orderItemProgress, progressTotals, pendingGrams } from '../src/production.ts';
 import { DEFAULT_PRODUCTS } from '../src/products.ts';
 import type { Order } from '../src/types.ts';
@@ -39,6 +39,12 @@ const done = mk('q', 1, { items, doneMap: { '휴대폰 마운트 거치대': 3, 
 assert.equal(buildProductionSummary([done], DEFAULT_PRODUCTS).orderCount, 0);
 const cat = DEFAULT_PRODUCTS.map((p) => ({ ...p, grams: 10, filaments: undefined }));
 assert.equal(pendingGrams([o1], cat), 20);
+// 새 정렬: ★ → 접수일 오래된 순 (seq 무시), 완료 탭은 최신순
+{
+  const list = [mk('n', 30, { seq: 1 }), mk('o', 10), mk('m', 20), mk('s', 40, { priority: true }), mk('t', 20)];
+  assert.deepEqual([...list].sort(byDate).map((o) => o.id), ['s', 'o', 'm', 't', 'n']);
+  assert.deepEqual([...list].sort(compareOrdersNewest).map((o) => o.id), ['s', 'n', 'm', 't', 'o']);
+}
 console.log('sequence + progress OK');
 
 // 추가 메모는 제작 체크·만들 제품에 나오면 안 됨
