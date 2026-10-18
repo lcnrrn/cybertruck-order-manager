@@ -24,8 +24,8 @@ function alignItemsToCatalog(partials: Partial<Order>[]): Partial<Order>[] {
   return partials.map((o) => {
     const raw = (o.items || '').trim();
     if (!raw) return o;
-    const { selected, note } = parseItemsAgainstCatalog(raw, catalog);
-    return { ...o, items: joinItems(selected, note) };
+    const { selected, note, qty } = parseItemsAgainstCatalog(raw, catalog);
+    return { ...o, items: joinItems(selected, note, qty) };
   });
 }
 

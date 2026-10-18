@@ -11,7 +11,7 @@ interface ImportMeta {
 
 /** Google Identity Services (GIS) — loaded via script tag */
 interface GoogleTokenClient {
-  requestAccessToken: (overrideConfig?: { prompt?: string }) => void;
+  requestAccessToken: (overrideConfig?: { prompt?: string; login_hint?: string; hint?: string }) => void;
 }
 
 interface GoogleTokenResponse {
@@ -29,6 +29,8 @@ interface GoogleAccountsOauth2 {
     scope: string;
     callback: (response: GoogleTokenResponse) => void;
     error_callback?: (err: { type?: string; message?: string }) => void;
+    login_hint?: string;
+    hint?: string;
   }) => GoogleTokenClient;
   revoke: (token: string, callback?: () => void) => void;
 }
