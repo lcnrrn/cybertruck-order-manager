@@ -21,12 +21,14 @@ export interface ProductionSummary {
 const QTY_RE = /\s*(?:[xX×]\s*(\d{1,3})|(\d{1,3})\s*(?:개|ea|EA|세트|셋트|set|SET|pcs))\s*$/;
 const QTY_PREFIX_RE = /^\s*(\d{1,3})\s*(?:개|ea|세트)\s+/;
 
-export function splitQty(part: string): { text: string; qty: number } {
+export function splitQty(part: string): { text: string; qty: number; explicit?: boolean } {
   let text = stripItemPrices(part).trim();
   let qty = 1;
+  let explicit = false;
   const m = text.match(QTY_RE);
   if (m && m.index !== undefined && m.index > 0) {
     qty = Number(m[1] || m[2]) || 1;
+    explicit = Boolean(m[1]); // 'x3'/'×3' 은 항상 수량 (제품명 속 숫자와 무관)
     text = text.slice(0, m.index).trim();
   } else {
     const p = text.match(QTY_PREFIX_RE);
@@ -35,7 +37,7 @@ export function splitQty(part: string): { text: string; qty: number } {
       text = text.slice(p[0].length).trim();
     }
   }
-  return { text, qty: Math.max(1, qty) };
+  return { text, qty: Math.max(1, qty), explicit };
 }
 
 /** 이 이상은 오인식(전화번호·치수 등)으로 보고 1개로 처리 */
@@ -83,7 +85,8 @@ export function parseOrderProducts(
     if (!text) continue;
     let name = matchProduct(text, names);
     // 제품명 자체에 들어 있는 개수(예: '안전벨트 클립 (풀셋 5개)', '(뒷자석 3개)')는 수량이 아님
-    if (qty > 1) {
+    // 단, 'x3'처럼 명시적인 수량 표기는 이름 속 숫자와 같아도 수량으로 인정
+    if (qty > 1 && !sp.explicit) {
       const whole = stripItemPrices(part).trim();
       const wholeName = matchProduct(whole, names);
       if (wholeName && (!name || wholeName === name) && countsInName(wholeName).includes(qty)) {

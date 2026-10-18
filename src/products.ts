@@ -297,11 +297,11 @@ export function scoreCatalogMatch(part: string, catalogName: string): number {
 const ITEM_QTY_RE = /\s*(?:[xX×]\s*(\d{1,3})|(\d{1,3})\s*(?:개|ea|EA|세트|셋트|set|SET|pcs))\s*$/;
 
 /** 조각 끝의 수량 표기(x3, ×3, 3개, 3세트) 분리 */
-export function splitItemQty(part: string): { text: string; qty: number } {
+export function splitItemQty(part: string): { text: string; qty: number; explicit?: boolean } {
   const m = part.match(ITEM_QTY_RE);
   if (m && m.index !== undefined && m.index > 0) {
     const qty = Number(m[1] || m[2]) || 1;
-    return { text: part.slice(0, m.index).trim(), qty: Math.max(1, qty) };
+    return { text: part.slice(0, m.index).trim(), qty: Math.max(1, qty), explicit: Boolean(m[1]) };
   }
   return { text: part.trim(), qty: 1 };
 }
@@ -353,7 +353,7 @@ export function parseItemsAgainstCatalog(
       const stripped = bestName(sp.text);
       const countsInWhole = whole ? Array.from(whole.matchAll(/(\d{1,3})\s*(?:개|ea|세트|셋트|set|pcs)/gi)).map((m) => Number(m[1])) : [];
       // 제품명 자체에 들어 있는 개수(예: '(풀셋 5개)')는 수량이 아님
-      if (whole && countsInWhole.includes(sp.qty) && (!stripped || stripped === whole)) {
+      if (!sp.explicit && whole && countsInWhole.includes(sp.qty) && (!stripped || stripped === whole)) {
         name = whole;
       } else if (stripped) {
         name = stripped;
