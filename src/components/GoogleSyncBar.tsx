@@ -26,7 +26,11 @@ export function GoogleSyncBar({
   return (
     <div className="google-sync-bar-wrap">
       <div className="google-sync-bar">
-        {!connected ? (
+        {!connected && needsLogin ? (
+          <button type="button" className="btn btn-secondary google-connect-btn" onClick={onSync} disabled={busy}>
+            {busy ? '다시 연결 중…' : '🔄 탭해서 동기화 이어가기'}
+          </button>
+        ) : !connected ? (
           <>
             <button
               type="button"
@@ -72,7 +76,7 @@ export function GoogleSyncBar({
       </div>
       {!connected && needsLogin ? (
         <p className="google-backup-hint">
-          자동 로그인이 만료됐어요. 위 ‘구글 시트 연결’을 한 번만 눌러 주세요. 이후엔 자동 동기화됩니다.
+          구글 로그인 시간이 지나서 잠시 멈췄어요. 화면 아무 곳이나 한 번 누르면 자동으로 다시 이어져요 (주문은 그대로 사용 가능).
         </p>
       ) : !connected ? (
         <p className="google-backup-hint">

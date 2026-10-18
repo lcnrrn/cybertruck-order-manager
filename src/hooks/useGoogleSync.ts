@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Order } from '../types';
 import { getClientId, getSheetId, hasGoogleConfig } from '../google/config';
 import {
+  clearStoredToken,
   fetchTokenEmail,
+  getStoredToken,
+  loadGisScript,
   requestAccessToken,
   revokeAccessToken,
 } from '../google/gis';
@@ -146,16 +149,11 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       if (/401|invalid|expired|UNAUTHENTICATED/i.test(msg)) {
-        // token expired: try silent refresh once
-        try {
-          const t = await requestAccessToken({ prompt: '' });
-          setAccessToken(t);
-          tokenRef.current = t;
-        } catch {
-          setAccessToken(null);
-          tokenRef.current = null;
-          setNeedsLogin(true);
-        }
+        // 토큰 만료: 팝업은 사용자 탭 안에서만 열 수 있어서, 다음 탭에 자동으로 다시 연결
+        clearStoredToken();
+        setAccessToken(null);
+        tokenRef.current = null;
+        setNeedsLogin(true);
       }
     } finally {
       pullingRef.current = false;
@@ -182,6 +180,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       onToastRef.current?.('설정에서 Client ID와 Sheet ID를 입력해 주세요.');
       return false;
     }
+    if (reconnectingRef.current) return false;
     initialSyncDoneRef.current = false;
     setStatus('connecting');
     setLastError(null);
@@ -241,7 +240,8 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       }
       setStatus('connecting');
       try {
-        token = await requestAccessToken({ prompt: '' });
+        if (reconnectingRef.current) return; // 첫 탭 자동 재연결이 이미 진행 중
+        token = await requestAccessToken({ prompt: '', hint: localStorage.getItem(LS_EMAIL) });
         setNeedsLogin(false);
         setAccessToken(token);
         tokenRef.current = token;
@@ -319,44 +319,109 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     };
   }, []);
 
-  // Silent re-auth on load if previously signed in
-  useEffect(() => {
-    let cancelled = false;
-    async function tryRestore() {
-      let signed = signedIntent.current;
+  /** 재연결 성공 후 공통 처리 */
+  const adoptToken = useCallback(
+    async (token: string, toastMsg: string) => {
+      setAccessToken(token);
+      tokenRef.current = token;
+      setNeedsLogin(false);
       try {
-        signed = signed || localStorage.getItem(LS_SIGNED) === '1';
+        localStorage.setItem(LS_SIGNED, '1');
       } catch {
         /* ignore */
       }
-      if (!signed) return;
-      if (!hasGoogleConfig()) return;
-      if (tokenRef.current) return;
-      try {
-        setStatus('connecting');
-        const token = await requestAccessToken({ prompt: '' });
-        if (cancelled) return;
-        setAccessToken(token);
-        tokenRef.current = token;
+      signedIntent.current = true;
+      if (!localStorage.getItem(LS_EMAIL)) {
         const mail = await fetchTokenEmail(token);
-        if (mail && !cancelled) {
+        if (mail) {
           setEmail(mail);
           localStorage.setItem(LS_EMAIL, mail);
         }
-        setNeedsLogin(false);
-        await runPullMergePush(token, '자동 동기화 완료');
-      } catch {
-        if (!cancelled) {
-          setStatus('idle');
-          if (!tokenRef.current) setNeedsLogin(true);
+      }
+      await runPullMergePush(token, toastMsg);
+    },
+    [runPullMergePush],
+  );
+
+  const isSigned = () => {
+    try {
+      return signedIntent.current || localStorage.getItem(LS_SIGNED) === '1';
+    } catch {
+      return signedIntent.current;
+    }
+  };
+
+  // 앱 시작: 저장된 토큰이 아직 유효하면 그대로 바로 동기화 (팝업·버튼 없음)
+  useEffect(() => {
+    let cancelled = false;
+    async function tryRestore() {
+      if (!isSigned() || !hasGoogleConfig() || tokenRef.current) return;
+      void loadGisScript().catch(() => undefined); // 다음 탭에서 즉시 팝업을 열 수 있게 미리 로드
+      const stored = getStoredToken();
+      if (stored) {
+        try {
+          await adoptToken(stored, '자동 동기화 완료');
+          return;
+        } catch {
+          clearStoredToken();
+          if (cancelled) return;
+          setAccessToken(null);
+          tokenRef.current = null;
         }
+      }
+      if (!cancelled) {
+        setStatus('idle');
+        setNeedsLogin(true); // 첫 탭에서 자동 재연결
       }
     }
     void tryRestore();
     return () => {
       cancelled = true;
     };
-  }, [runPullMergePush]);
+  }, [adoptToken]);
+
+  // 토큰이 만료된 상태면: 화면 어디든 처음 탭할 때(사용자 제스처) 자동으로 재연결
+  const reconnectingRef = useRef(false);
+  useEffect(() => {
+    if (!needsLogin || accessToken) return;
+    const onTap = () => {
+      if (reconnectingRef.current || tokenRef.current || !isSigned() || !hasGoogleConfig()) return;
+      reconnectingRef.current = true;
+      setStatus('connecting');
+      let hint: string | null = null;
+      try {
+        hint = localStorage.getItem(LS_EMAIL);
+      } catch {
+        /* ignore */
+      }
+      // 제스처 안에서 동기적으로 팝업 열기 (구글 로그인 유지 중이면 잠깐 떴다 자동으로 닫힘)
+      requestAccessToken({ prompt: '', hint })
+        .then((t) => adoptToken(t, '동기화 다시 연결됨'))
+        .catch(() => {
+          setStatus('idle');
+        })
+        .finally(() => {
+          reconnectingRef.current = false;
+        });
+    };
+    // 터치 끝(click) 시점이어야 iOS가 팝업을 허용
+    document.addEventListener('click', onTap, { capture: true, once: true });
+    return () => document.removeEventListener('click', onTap, { capture: true });
+  }, [needsLogin, accessToken, adoptToken]);
+
+  // 앱을 다시 열었을 때(포그라운드) 토큰이 만료됐으면 재연결 대기 상태로
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible' || !tokenRef.current) return;
+      if (!getStoredToken()) {
+        setAccessToken(null);
+        tokenRef.current = null;
+        setNeedsLogin(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
 
   return {
     connected: Boolean(accessToken),
