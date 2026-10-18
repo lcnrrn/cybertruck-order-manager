@@ -6,6 +6,7 @@ import { orderTimestamp, resolvePeriodBounds } from '../period';
 import type { Product } from '../products';
 import { isUnpaid } from '../production';
 import { loadFilament, orderUseByType } from '../filament';
+import { markOrderDeleted } from '../deletedOrders';
 import { compactSeq, compareOrders, isActive, moveSeq, setSeq } from '../sequence';
 
 /** 완료 전환 시 필라멘트 차감 기록, 완료 해제 시 되돌림 (중복 차감 방지) */
@@ -129,6 +130,7 @@ export function useOrders(products: Product[] = []) {
   }, []);
 
   const deleteOrder = useCallback((id: string) => {
+    markOrderDeleted(id);
     setOrders((prev) => {
       const rest = prev.filter((o) => o.id !== id);
       return prev.find((o) => o.id === id)?.seq !== undefined ? compactSeq(rest) : rest;

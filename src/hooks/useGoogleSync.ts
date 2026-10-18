@@ -103,6 +103,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       setStatus('syncing');
       setLastError(null);
       try {
+        await syncSettings(token).catch(() => false); // 삭제 기록 먼저 받아서 되살아나지 않게
         const remote = await pullOrders(token);
         lastRemoteCountRef.current = remote.length;
         const merged = mergeOrdersForSync(ordersRef.current, remote);
@@ -134,6 +135,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     if (!navigator.onLine) return;
     pullingRef.current = true;
     try {
+      await syncSettings(token).catch(() => false);
       const remote = await pullOrders(token);
       lastRemoteCountRef.current = remote.length;
       const local = ordersRef.current;

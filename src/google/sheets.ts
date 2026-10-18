@@ -1,6 +1,7 @@
 import { numMap, strMap } from '../storage';
 import type { Order, OrderStatus } from '../types';
 import { isSampleOrderId, isSampleOnly } from '../storage';
+import { dropDeleted, loadDeleted } from '../deletedOrders';
 import { ORDERS_HEADERS, ORDERS_SHEET_NAME, getSheetId } from './config';
 
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
@@ -242,7 +243,11 @@ export function mergeByUpdatedAt(local: Order[], remote: Order[]): Order[] {
  * - If local is empty / demo-only and remote has real rows → prefer remote (drop samples).
  * - Otherwise merge by updatedAt.
  */
-export function mergeOrdersForSync(local: Order[], remote: Order[]): Order[] {
+export function mergeOrdersForSync(local: Order[], remote: Order[], deleted = loadDeleted()): Order[] {
+  return dropDeleted(mergeOrdersRaw(local, remote), deleted);
+}
+
+function mergeOrdersRaw(local: Order[], remote: Order[]): Order[] {
   const remoteReal = remote.filter((o) => !isSampleOrderId(o.id));
   const localEmptyOrSample = local.length === 0 || isSampleOnly(local);
 

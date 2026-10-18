@@ -1,4 +1,5 @@
 import { getSheetId } from './config';
+import { mergeDeleted, normalizeDeleted } from '../deletedOrders';
 import { mergeById, mergeExpenseStates, normalizeExpenses } from '../expenses';
 import {
   SETTINGS_APPLIED_EVENT,
@@ -18,7 +19,7 @@ import {
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 export const SETTINGS_SHEET_NAME = '설정';
 const HEADERS = ['key', 'json', 'updatedAt'];
-const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament', 'production', 'expenses'];
+const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament', 'production', 'expenses', 'deletedOrders'];
 
 interface Entry {
   json: string; // '' = default / not set
@@ -188,6 +189,16 @@ async function syncSettingsOnce(token: string): Promise<boolean> {
     let m: Entry | null;
     if (key === 'filament') m = mergeFilament(l, r);
     else if (key === 'expenses') m = mergeExpensesEntry(l, r);
+    else if (key === 'deletedOrders') {
+      const parse = (e: Entry | null) => {
+        try {
+          return normalizeDeleted(e ? JSON.parse(e.json || '{}') : {});
+        } catch {
+          return {};
+        }
+      };
+      m = !l && !r ? null : { json: JSON.stringify(mergeDeleted(parse(r), parse(l))), updatedAt: Math.max(l?.updatedAt || 0, r?.updatedAt || 0) };
+    }
     else if (!l) m = r;
     else if (!r) m = l;
     else m = l.updatedAt > r.updatedAt ? l : r; // tie → remote (first pusher) wins
