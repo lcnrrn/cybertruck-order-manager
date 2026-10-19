@@ -74,7 +74,7 @@ export function OrderCard({
       </header>
 
       <div className="order-body">
-        <div className="order-items"><ProductBadges items={order.items} products={products} /></div>
+        <div className="order-items"><ProductBadges items={order.items} products={products} prices={order.prices} /></div>
         {progress.length ? (
           <div className="make-list" aria-label="품목별 제작 체크">
             <div className="make-head">

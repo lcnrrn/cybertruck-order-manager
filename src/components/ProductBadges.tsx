@@ -8,13 +8,15 @@ interface Props {
   items: string;
   products: Product[];
   className?: string;
+  /** 주문별 단가 지정 — 0이면 서비스 배지 */
+  prices?: Record<string, number>;
 }
 
 /**
  * Render order items as colored catalog badges + leftover note text.
  * Best-effort match against the current product catalog.
  */
-export function ProductBadges({ items, products, className }: Props) {
+export function ProductBadges({ items, products, className, prices }: Props) {
   const raw = (items || '').trim();
   if (!raw) {
     return <span className={className}>주문 내용 없음</span>;
@@ -52,6 +54,7 @@ export function ProductBadges({ items, products, className }: Props) {
           >
             {name}
             {(qty[name] || 1) > 1 ? <b className="product-badge-qty"> ×{qty[name]}</b> : null}
+            {prices?.[name] === 0 ? <em className="service-tag">서비스</em> : null}
           </span>
         );
       })}

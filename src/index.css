@@ -1188,3 +1188,15 @@ a {
 .order-title-row { flex-wrap: wrap; }
 .order-date { order: 10; flex-basis: 100%; font-size: 0.85rem; font-weight: 600; color: #93c5fd; }
 .order-date em { font-style: normal; font-weight: 400; color: var(--text-muted, #9ca3af); }
+
+/* 품목 단가 · 서비스 */
+.qty-list li { flex-direction: column; align-items: stretch; }
+.qty-top { display: flex; align-items: center; gap: 8px; }
+.qty-price { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.85rem; color: #9ca3af; }
+.qty-price input { width: 96px; min-height: 36px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: inherit; font: inherit; text-align: right; }
+.qty-price b { color: #e5e7eb; }
+.service-btn { margin-left: auto; min-height: 36px; }
+.service-btn.on { background: #db2777; border-color: #db2777; color: #fff; }
+.qty-list li.is-service { border-color: #db2777; }
+.qty-total { text-align: right; margin: 6px 0 0; font-size: 0.95rem; }
+.service-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #db2777; color: #fff; font-style: normal; font-size: 0.72rem; font-weight: 700; }

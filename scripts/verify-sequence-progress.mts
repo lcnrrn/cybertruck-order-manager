@@ -126,3 +126,25 @@ console.log('memo exclusion OK');
   assert.deepEqual(mergeDeleted({ x: 1 }, { x: 5, y: 2 }), { x: 5, y: 2 });
   console.log('delete tombstone OK');
 }
+
+// 품목별 단가 · 서비스
+{
+  const { autoOrderAmount, orderAmount, orderGrams, unitPrice, isServiceItem } = await import('../src/production.ts');
+  const P1 = '휴대폰 마운트 거치대', P2 = '견인고리 커버';
+  const cat = DEFAULT_PRODUCTS.map((p) => ({ ...p, price: p.name === P1 ? 15000 : p.name === P2 ? 5000 : 0, grams: 10, filaments: undefined }));
+  const items = `${P1} x2 / ${P2}`;
+  const base = mk('pr', 1, { items });
+  assert.equal(autoOrderAmount(base, cat), 35000);
+  const svc = { ...base, prices: { [P2]: 0 } };
+  assert.equal(autoOrderAmount(svc, cat), 30000);
+  assert.ok(isServiceItem(svc, P2) && !isServiceItem(svc, P1));
+  const disc = { ...base, prices: { [P1]: 12000 } };
+  assert.equal(unitPrice(disc, P1, cat), 12000);
+  assert.equal(orderAmount(disc, cat), 29000);
+  // 직접 입력 금액(L)이 있으면 그 값 우선 (기존 동작)
+  assert.equal(orderAmount({ ...svc, amount: 1000 }, cat), 1000);
+  // 서비스 품목도 제작·필라멘트에는 그대로
+  assert.equal(orderGrams(svc, cat), 30);
+  assert.equal(buildProductionSummary([svc], cat).total, 3);
+  console.log('item prices OK');
+}
