@@ -207,16 +207,28 @@ export function isUnpaid(order: Order, catalog: Product[]): boolean {
 }
 
 /** 주문 1건 필라멘트 소모량(g) */
-export function orderGrams(order: Order, catalog: Product[], remainingOnly = false): number {
+export function orderGrams(order: Pick<Order, 'items' | 'doneMap' | 'filamentGrams'>, catalog: Product[], remainingOnly = false): number {
   const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
   let sum = 0;
   for (const p of r.products) {
     const qty = remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty;
     const prod = catalog.find((c) => c.name === p.name);
-    const g = prod?.filaments?.length
-      ? prod.filaments.reduce((a, f) => a + (Number.isFinite(f.grams) && f.grams > 0 ? f.grams : 0), 0)
-      : prod?.grams || 0;
-    sum += g * qty;
+    const parts: number[] = prod?.filaments?.length
+      ? prod.filaments.map((f) => (Number.isFinite(f.grams) && f.grams > 0 ? f.grams : 0))
+      : prod?.grams
+        ? [prod.grams]
+        : [];
+    // 이 주문에서 직접 지정한 줄(총량) 반영
+    const ov: Record<number, number> = {};
+    for (const [k, v] of Object.entries(order.filamentGrams || {})) {
+      const i = k.lastIndexOf('#');
+      if (i > 0 && k.slice(0, i) === p.name && typeof v === 'number' && v >= 0) ov[Number(k.slice(i + 1))] = v;
+    }
+    const n = Math.max(parts.length, ...Object.keys(ov).map((x) => Number(x) + 1), 0);
+    for (let idx = 0; idx < n; idx++) {
+      const perUnit = idx in ov ? ov[idx] / Math.max(1, p.qty) : parts[idx] || 0;
+      sum += perUnit * qty;
+    }
   }
   return sum;
 }

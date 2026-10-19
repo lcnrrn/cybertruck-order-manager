@@ -171,40 +171,83 @@ export interface OrderSlot {
   product: string;
   idx: number;
   qty: number;
+  /** 1개당 g (직접 지정 시 = 지정 총량 ÷ 주문 수량) */
   grams: number;
+  /** 제품 관리 기본값(1개당 g), 없으면 0 */
+  catalogGrams: number;
+  /** 이 주문에서 직접 지정한 줄 총량(g) */
+  overrideTotal?: number;
+  /** 제품 관리에 없는 추가 줄 */
+  extra: boolean;
+  /** 주문 전체 수량 */
+  fullQty: number;
   defaultTypeId: string;
   typeId: string;
 }
 
+/** 이 주문에서 제품별로 직접 추가한 줄 순번들 */
+function overrideIdxs(order: Pick<Order, 'filamentGrams'>, product: string): number[] {
+  const out: number[] = [];
+  for (const k of Object.keys(order.filamentGrams || {})) {
+    const i = k.lastIndexOf('#');
+    if (i > 0 && k.slice(0, i) === product) {
+      const n = Number(k.slice(i + 1));
+      if (Number.isInteger(n) && n >= 0) out.push(n);
+    }
+  }
+  return out;
+}
+
+/**
+ * 주문의 필라멘트 줄 목록.
+ * forEdit=true 면 필라멘트 설정이 없는 제품(예: 기타)도 0g 줄을 하나 보여줌(입력용).
+ */
 export function orderSlots(
-  order: Pick<Order, 'items' | 'filamentPick' | 'doneMap'>,
+  order: Pick<Order, 'items' | 'filamentPick' | 'doneMap' | 'filamentGrams'>,
   catalog: Product[],
   state: FilamentState,
   remainingOnly = false,
+  forEdit = false,
 ): OrderSlot[] {
   const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
   const out: OrderSlot[] = [];
   for (const p of r.products) {
-    const parts = productParts(catalog.find((c) => c.name === p.name));
-    parts.forEach((part, idx) => {
+    // 줄 순번은 제품 관리 순서 그대로(0g 줄 포함) — 화면/계산에서 같은 키를 쓰도록
+    const parts = productParts(catalog.find((c) => c.name === p.name), true);
+    const extraIdx = overrideIdxs(order, p.name);
+    let count = Math.max(parts.length, extraIdx.length ? Math.max(...extraIdx) + 1 : 0);
+    if (forEdit && count === 0) count = 1;
+    const qty = remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty;
+    for (let idx = 0; idx < count; idx++) {
+      const part = parts[idx];
       const k = pickKey(p.name, idx);
+      const ov = order.filamentGrams?.[k];
+      const hasOv = typeof ov === 'number' && ov >= 0;
+      if (!part && !hasOv && !(forEdit && idx === 0)) continue; // 비어 있는 중간 줄
+      if (!forEdit && !hasOv && !(part && part.grams > 0 && Number.isFinite(part.grams))) continue; // 0g 줄은 계산 제외
+      const defType = part?.typeId || DEFAULT_TYPE_ID;
       const picked = order.filamentPick?.[k];
       const valid = picked && state.types.some((t) => t.id === picked) ? picked : undefined;
+      const catalogGrams = part?.grams || 0;
       out.push({
         product: p.name,
         idx,
-        qty: remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty,
-        grams: part.grams,
-        defaultTypeId: part.typeId,
-        typeId: valid || autoPickType(part.typeId, order.items, state),
+        qty,
+        grams: hasOv ? ov / Math.max(1, p.qty) : catalogGrams,
+        catalogGrams,
+        ...(hasOv ? { overrideTotal: ov } : {}),
+        extra: !part,
+        fullQty: p.qty,
+        defaultTypeId: defType,
+        typeId: valid || autoPickType(defType, order.items, state),
       });
-    });
+    }
   }
   return out;
 }
 
 export function orderUseByType(
-  order: Pick<Order, 'items' | 'filamentPick' | 'doneMap'>,
+  order: Pick<Order, 'items' | 'filamentPick' | 'doneMap' | 'filamentGrams'>,
   catalog: Product[],
   state: FilamentState,
   remainingOnly = false,

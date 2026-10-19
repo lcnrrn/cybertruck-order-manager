@@ -34,6 +34,8 @@ export type OrderFormValues = {
   filamentPick?: Record<string, string>;
   /** 품목별 단가 직접 지정 */
   prices?: Record<string, number>;
+  /** 이 주문만의 필라멘트 줄 총량 */
+  filamentGrams?: Record<string, number>;
   /** 접수일 YYYY-MM-DD */
   createdDate: string;
 };
@@ -75,6 +77,9 @@ export function OrderForm({
   const [qty, setQty] = useState<Record<string, number>>({});
   /** 품목별 단가 직접 지정 (0 = 서비스) */
   const [prices, setPrices] = useState<Record<string, number>>({});
+  /** 이 주문만의 필라멘트 줄 총량(g) */
+  const [fgrams, setFgrams] = useState<Record<string, number>>({});
+  const [gramText, setGramText] = useState<Record<string, string>>({});
   const [amountText, setAmountText] = useState('');
 
   useEffect(() => {
@@ -99,12 +104,16 @@ export function OrderForm({
       setSelected(parsed.selected);
       setQty(parsed.qty);
       setPrices(initial.prices || {});
+      setFgrams(initial.filamentGrams || {});
+      setGramText({});
       setItemsNote(parsed.note);
     } else {
       setValues({ ...empty, createdDate: toYmd(Date.now()) });
       setSelected([]);
       setQty({});
       setPrices({});
+      setFgrams({});
+      setGramText({});
       setItemsNote('');
       setAmountText('');
       setPick({});
@@ -158,6 +167,15 @@ export function OrderForm({
     onSubmit({
       ...values,
       filamentPick: keepPick,
+      filamentGrams: (() => {
+        const sel = new Set(orderedSelected());
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(fgrams)) {
+          const i = k.lastIndexOf('#');
+          if (i > 0 && sel.has(k.slice(0, i))) out[k] = v;
+        }
+        return Object.keys(out).length ? out : undefined;
+      })(),
       prices: (() => {
         // 선택된 품목만, 판매가와 다른 값만 저장
         const out: Record<string, number> = {};
@@ -310,19 +328,60 @@ export function OrderForm({
           </p>
         )}
         {filament && (() => {
-          const slots = orderSlots({ items: joinItems(orderedSelected(), itemsNote, qty), filamentPick: pick }, products, filament);
+          const slots = orderSlots(
+            { items: joinItems(orderedSelected(), itemsNote, qty), filamentPick: pick, filamentGrams: fgrams },
+            products,
+            filament,
+            false,
+            true,
+          );
           if (slots.length === 0) return null;
           const opts = filament.types.filter((t) => !t.hidden);
+          const byProduct = new Map<string, number>();
+          for (const sl of slots) byProduct.set(sl.product, Math.max(byProduct.get(sl.product) ?? -1, sl.idx));
           return (
             <div className="fil-pick">
-              <span className="hint">🧵 필라멘트 (메모의 색상 요청 자동 반영 · 바꿀 수 있어요)</span>
-              {slots.map((sl) => {
+              <span className="hint">🧵 필라멘트 (g은 이 주문의 그 줄 총량 · 수량 포함 · 이 주문에만 적용)</span>
+              {slots.map((sl, i) => {
                 const k = `${sl.product}#${sl.idx}`;
                 const t = filament.types.find((x) => x.id === sl.typeId);
+                const total = Math.round(sl.grams * sl.qty * 100) / 100;
+                const isLastOfProduct = byProduct.get(sl.product) === sl.idx && slots.findIndex((x, j) => j > i && x.product === sl.product) < 0;
                 return (
-                  <label key={k}>
-                    <i className="fil-dot" style={{ background: swatchOf(t) }} />
-                    <span>{sl.product} · {sl.grams * sl.qty}g</span>
+                  <div key={k} className={`fil-row ${sl.overrideTotal !== undefined ? 'overridden' : ''}`}>
+                    <div className="fil-row-top">
+                      <i className="fil-dot" style={{ background: swatchOf(t) }} />
+                      <span className="fil-row-name">{sl.product}{sl.extra && sl.idx > 0 ? ` (추가 ${sl.idx})` : ''}</span>
+                      <input
+                        className="fil-g-input"
+                        inputMode="decimal"
+                        aria-label={`${sl.product} 필라멘트 g`}
+                        value={gramText[k] ?? String(total)}
+                        onChange={(e) => {
+                          const txt = e.target.value.replace(/[^\d.]/g, '');
+                          setGramText((m) => ({ ...m, [k]: txt }));
+                          const v = Number(txt);
+                          if (txt !== '' && Number.isFinite(v)) setFgrams((m) => ({ ...m, [k]: v }));
+                        }}
+                        onBlur={() => setGramText((m) => {
+                          const n = { ...m };
+                          delete n[k];
+                          return n;
+                        })}
+                      />
+                      <span className="fil-g-unit">g{sl.fullQty > 1 ? ` (×${sl.fullQty} 전체)` : ''}</span>
+                      {sl.overrideTotal !== undefined && !sl.extra ? (
+                        <button type="button" className="btn-icon fil-reset" aria-label="기본값으로" title={`기본 ${sl.catalogGrams * sl.fullQty}g`}
+                          onClick={() => setFgrams((m) => { const n = { ...m }; delete n[k]; return n; })}>↺</button>
+                      ) : null}
+                      {sl.extra && sl.idx > 0 ? (
+                        <button type="button" className="btn-icon fil-reset" aria-label="이 줄 삭제"
+                          onClick={() => {
+                            setFgrams((m) => { const n = { ...m }; delete n[k]; return n; });
+                            setPick((m) => { const n = { ...m }; delete n[k]; return n; });
+                          }}>✕</button>
+                      ) : null}
+                    </div>
                     <select
                       value={sl.typeId}
                       onChange={(e) => {
@@ -339,7 +398,12 @@ export function OrderForm({
                         <option key={o.id} value={o.id}>{typeLabel(o)}</option>
                       ))}
                     </select>
-                  </label>
+                    {isLastOfProduct ? (
+                      <button type="button" className="btn-link fil-add" onClick={() => setFgrams((m) => ({ ...m, [`${sl.product}#${sl.idx + 1}`]: 0 }))}>
+                        + 필라멘트 추가 ({sl.product})
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>
@@ -402,7 +466,7 @@ export function OrderForm({
       <fieldset className="field money-field">
         <legend>금액 · 입금</legend>
         {(() => {
-          const preview = { items: joinItems(orderedSelected(), itemsNote, qty), prices } as Order;
+          const preview = { items: joinItems(orderedSelected(), itemsNote, qty), prices, filamentGrams: fgrams } as Order;
           const auto = autoOrderAmount(preview, products);
           const g = orderGrams(preview, products);
           return (
