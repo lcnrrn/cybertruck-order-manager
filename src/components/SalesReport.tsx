@@ -16,7 +16,7 @@ import {
 import type { Order, PeriodRange } from '../types';
 import type { Product } from '../products';
 import { orderTimestamp, resolvePeriodBounds } from '../period';
-import { formatWon, orderAmount, parseOrderProducts } from '../production';
+import { formatWon, isServiceItem, orderAmount, parseOrderProducts, unitPrice } from '../production';
 import { PeriodFilterBar } from './PeriodFilter';
 
 interface Props {
@@ -68,6 +68,8 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
     const prod = new Map<string, { qty: number; amount: number }>();
     const unpaid: { order: Order; amount: number }[] = [];
     const names = products.map((p) => p.name);
+    let serviceQty = 0;
+    let serviceValue = 0;
     for (const o of list) {
       const amt = orderAmount(o, products);
       total += amt;
@@ -80,7 +82,11 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
       if (o.paid) m.paid += amt;
       months.set(mk, m);
       for (const p of parseOrderProducts(o.items, names).products) {
-        const price = products.find((x) => x.name === p.name)?.price || 0;
+        const price = unitPrice(o, p.name, products);
+        if (isServiceItem(o, p.name)) {
+          serviceQty += p.qty;
+          serviceValue += (products.find((x) => x.name === p.name)?.price || 0) * p.qty;
+        }
         const r = prod.get(p.name) ?? { qty: 0, amount: 0 };
         r.qty += p.qty;
         r.amount += price * p.qty;
@@ -90,7 +96,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
     const monthRows = [...months.entries()].sort((a, b) => b[0].localeCompare(a[0]));
     const prodRows = [...prod.entries()].sort((a, b) => b[1].amount - a[1].amount || b[1].qty - a[1].qty);
     unpaid.sort((a, b) => a.order.createdAt - b.order.createdAt);
-    return { count: list.length, total, paid, unpaidSum: total - paid, unpaid, monthRows, prodRows, list };
+    return { serviceQty, serviceValue, count: list.length, total, paid, unpaidSum: total - paid, unpaid, monthRows, prodRows, list };
   }, [orders, products, period]);
 
   const [exp, setExp] = useState<ExpenseState>(() => loadExpenses());
@@ -281,7 +287,10 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
           </li>
         ))}
       </ul>
-      <p className="hint">제품별 금액은 판매가 × 수량 기준이에요 (할인·배송비 직접 입력분은 총 매출에만 반영).</p>
+      <p className="hint">제품별 금액은 주문별 단가(서비스는 0원) × 수량 기준이에요 (전체 금액을 직접 입력한 할인분은 총 매출에만 반영).</p>
+      {data.serviceQty > 0 && (
+        <p className="hint">🎁 서비스 제공 {data.serviceQty}개 · 판매가 기준 {formatWon(data.serviceValue)} 상당</p>
+      )}
 
       <div className="form-actions">
         <button type="button" className="btn btn-secondary" onClick={onClose}>닫기</button>

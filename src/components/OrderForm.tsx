@@ -32,6 +32,8 @@ export type OrderFormValues = {
   paidAt?: number;
   /** 제품별 필라멘트 종류 직접 선택 */
   filamentPick?: Record<string, string>;
+  /** 품목별 단가 직접 지정 */
+  prices?: Record<string, number>;
   /** 접수일 YYYY-MM-DD */
   createdDate: string;
 };
@@ -71,6 +73,8 @@ export function OrderForm({
   const [selected, setSelected] = useState<string[]>([]);
   const [itemsNote, setItemsNote] = useState('');
   const [qty, setQty] = useState<Record<string, number>>({});
+  /** 품목별 단가 직접 지정 (0 = 서비스) */
+  const [prices, setPrices] = useState<Record<string, number>>({});
   const [amountText, setAmountText] = useState('');
 
   useEffect(() => {
@@ -94,11 +98,13 @@ export function OrderForm({
       const parsed = parseItemsAgainstCatalog(initial.items, products);
       setSelected(parsed.selected);
       setQty(parsed.qty);
+      setPrices(initial.prices || {});
       setItemsNote(parsed.note);
     } else {
       setValues({ ...empty, createdDate: toYmd(Date.now()) });
       setSelected([]);
       setQty({});
+      setPrices({});
       setItemsNote('');
       setAmountText('');
       setPick({});
@@ -113,6 +119,20 @@ export function OrderForm({
     setSelected((prev) =>
       prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name],
     );
+  }
+
+  /** 품목 가격을 바꾸면 예전에 직접 넣은 전체 금액은 비워서 품목 합계가 반영되게 */
+  function clearManual(): void {
+    if (amountText) setAmountText('');
+  }
+
+  function catalogPrice(name: string): number {
+    return products.find((p) => p.name === name)?.price || 0;
+  }
+
+  function priceOf(name: string): number {
+    const v = prices[name];
+    return typeof v === 'number' ? v : catalogPrice(name);
   }
 
   function changeQty(name: string, d: number) {
@@ -138,6 +158,15 @@ export function OrderForm({
     onSubmit({
       ...values,
       filamentPick: keepPick,
+      prices: (() => {
+        // 선택된 품목만, 판매가와 다른 값만 저장
+        const out: Record<string, number> = {};
+        for (const n of orderedSelected()) {
+          const v = prices[n];
+          if (typeof v === 'number' && v !== catalogPrice(n)) out[n] = v;
+        }
+        return Object.keys(out).length ? out : undefined;
+      })(),
       amount: amtRaw ? Number(amtRaw) : undefined,
       paidAt: values.paid ? values.paidAt || Date.now() : undefined,
       name: values.name.trim(),
@@ -208,16 +237,51 @@ export function OrderForm({
         {selected.length > 0 && (
           <ul className="qty-list" aria-label="제품별 수량">
             {orderedSelected().map((name) => (
-              <li key={name}>
-                <span className="qty-name">{name}</span>
-                <span className="qty-stepper">
-                  <button type="button" className="btn-icon" aria-label="수량 빼기" onClick={() => changeQty(name, -1)} disabled={(qty[name] || 1) <= 1}>−</button>
-                  <b>{qty[name] || 1}</b>
-                  <button type="button" className="btn-icon" aria-label="수량 더하기" onClick={() => changeQty(name, 1)}>+</button>
-                </span>
+              <li key={name} className={priceOf(name) === 0 && catalogPrice(name) > 0 ? 'is-service' : ''}>
+                <div className="qty-top">
+                  <span className="qty-name">{name}</span>
+                  <span className="qty-stepper">
+                    <button type="button" className="btn-icon" aria-label="수량 빼기" onClick={() => changeQty(name, -1)} disabled={(qty[name] || 1) <= 1}>−</button>
+                    <b>{qty[name] || 1}</b>
+                    <button type="button" className="btn-icon" aria-label="수량 더하기" onClick={() => changeQty(name, 1)}>+</button>
+                  </span>
+                </div>
+                <div className="qty-price">
+                  <input
+                    inputMode="numeric"
+                    aria-label={`${name} 단가`}
+                    value={priceOf(name).toLocaleString('ko-KR')}
+                    onChange={(e) => {
+                      const v = Number(e.target.value.replace(/[^\d]/g, '')) || 0;
+                      clearManual();
+                      setPrices((p) => ({ ...p, [name]: v }));
+                    }}
+                  />
+                  <span>원 × {qty[name] || 1} = <b>{formatWon(priceOf(name) * (qty[name] || 1))}</b></span>
+                  <button
+                    type="button"
+                    className={`btn btn-compact service-btn ${priceOf(name) === 0 ? 'on' : ''}`}
+                    onClick={() => {
+                      clearManual();
+                      setPrices((p) => {
+                        const n = { ...p };
+                        if (priceOf(name) === 0) delete n[name]; // 서비스 해제 → 판매가로
+                        else n[name] = 0;
+                        return n;
+                      });
+                    }}
+                  >
+                    {priceOf(name) === 0 ? '서비스 ✓' : '서비스'}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
+        )}
+        {selected.length > 0 && (
+          <p className="qty-total">
+            품목 합계 <b>{formatWon(autoOrderAmount({ items: joinItems(orderedSelected(), itemsNote, qty), prices }, products))}</b>
+          </p>
         )}
         {products.length === 0 && (
           <p className="hint">
@@ -338,7 +402,7 @@ export function OrderForm({
       <fieldset className="field money-field">
         <legend>금액 · 입금</legend>
         {(() => {
-          const preview = { items: joinItems(orderedSelected(), itemsNote, qty) } as Order;
+          const preview = { items: joinItems(orderedSelected(), itemsNote, qty), prices } as Order;
           const auto = autoOrderAmount(preview, products);
           const g = orderGrams(preview, products);
           return (
@@ -350,7 +414,7 @@ export function OrderForm({
           );
         })()}
         <label className="field">
-          <span>실제 금액 (비우면 자동 · 할인/배송비 반영 시 입력)</span>
+          <span>실제 금액 (비우면 품목 합계 · 전체 할인 등만 직접 입력)</span>
           <input
             inputMode="numeric"
             value={amountText}

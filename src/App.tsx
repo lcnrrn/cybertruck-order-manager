@@ -279,6 +279,7 @@ export default function App() {
         paid: values.paid || undefined,
         paidAt: values.paid ? values.paidAt : undefined,
         filamentPick: values.filamentPick,
+        prices: values.prices,
         // 접수일을 바꾼 경우에만 createdAt 변경 (시각은 유지)
         ...(values.createdDate && values.createdDate !== toYmd(editing.createdAt || editing.updatedAt)
           ? { createdAt: withYmd(editing.createdAt || editing.updatedAt, values.createdDate) }
@@ -300,6 +301,7 @@ export default function App() {
         paid: values.paid || undefined,
         paidAt: values.paid ? values.paidAt : undefined,
         filamentPick: values.filamentPick,
+        prices: values.prices,
       });
       showToast('추가됨');
     }

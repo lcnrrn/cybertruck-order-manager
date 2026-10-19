@@ -81,6 +81,7 @@ export function useOrders(products: Product[] = []) {
         let next: Order = { ...o, ...patch, id: o.id, updatedAt: Date.now() };
         next = applyFilament(o, next, productsRef.current);
         if ('filamentPick' in patch && !patch.filamentPick) delete next.filamentPick;
+        if ('prices' in patch && !patch.prices) delete next.prices;
         for (const k of ['amount', 'paidAt'] as const) {
           if (k in patch && patch[k] === undefined) delete next[k];
         }
