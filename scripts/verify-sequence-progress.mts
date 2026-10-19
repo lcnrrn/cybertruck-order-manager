@@ -148,3 +148,28 @@ console.log('memo exclusion OK');
   assert.equal(buildProductionSummary([svc], cat).total, 3);
   console.log('item prices OK');
 }
+
+// 주문별 필라멘트 g 직접 지정 (기타 등)
+{
+  const { orderSlots, orderUseByType, pendingByType, normalizeFilament } = await import('../src/filament.ts');
+  const { orderGrams, pendingGrams } = await import('../src/production.ts');
+  const cat = [
+    { name: '기타', color: DEFAULT_PRODUCTS[0].color },
+    { name: 'A', color: DEFAULT_PRODUCTS[0].color, filaments: [{ typeId: 'r', grams: 10 }, { typeId: 'w', grams: 2 }] },
+  ] as never[];
+  const st = normalizeFilament({ types: [{ id: 'r', material: 'PETG', color: 'RED' }, { id: 'w', material: 'PETG', color: 'WHITE' }] });
+  const base = mk('g1', 1, { items: '기타 / A x2' });
+  // 기본: 기타는 0g(계산 제외), 편집 화면엔 입력용 줄
+  assert.equal(orderGrams(base, cat), 24);
+  assert.equal(orderSlots(base, cat, st).filter((s) => s.product === '기타').length, 0);
+  assert.equal(orderSlots(base, cat, st, false, true).filter((s) => s.product === '기타').length, 1);
+  // 기타 35g(빨강) + 추가줄 5g(흰색), A 첫 줄 총 30g으로
+  const ov = { ...base, filamentGrams: { '기타#0': 35, '기타#1': 5, 'A#0': 30 }, filamentPick: { '기타#0': 'r', '기타#1': 'w' } };
+  assert.equal(orderGrams(ov, cat), 35 + 5 + 30 + 4);
+  assert.deepEqual(orderUseByType(ov, cat, st), { r: 65, w: 9 });
+  assert.deepEqual(pendingByType([ov], cat, st), { r: 65, w: 9 });
+  // 남은 수량 기준: A 1개 제작 완료 → A 줄은 절반
+  const half = { ...ov, doneMap: { A: 1 } };
+  assert.equal(pendingGrams([half], cat), 35 + 5 + 15 + 2);
+  console.log('filament overrides OK');
+}

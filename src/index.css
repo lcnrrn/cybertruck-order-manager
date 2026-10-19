@@ -1200,3 +1200,13 @@ a {
 .qty-list li.is-service { border-color: #db2777; }
 .qty-total { text-align: right; margin: 6px 0 0; font-size: 0.95rem; }
 .service-tag { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #db2777; color: #fff; font-style: normal; font-size: 0.72rem; font-weight: 700; }
+
+/* 주문별 필라멘트 g 수정 */
+.fil-row { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; margin-top: 6px; }
+.fil-row.overridden { border-color: #f59e0b; }
+.fil-row-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fil-row-name { flex: 1; min-width: 120px; font-size: 0.9rem; }
+.fil-g-input { width: 80px; min-height: 36px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: inherit; font: inherit; text-align: right; }
+.fil-g-unit { font-size: 0.8rem; color: #9ca3af; }
+.fil-reset { min-width: 36px; min-height: 36px; }
+.fil-add { align-self: flex-start; font-size: 0.85rem; }
