@@ -50,6 +50,7 @@ export function normalizeOrder(raw: unknown): Order | null {
     filamentPick: strMap(o.filamentPick),
     seq: num(o.seq) && (o.seq as number) > 0 ? (o.seq as number) : undefined,
     doneMap: numMap(o.doneMap),
+    prices: numMap(o.prices),
     createdAt,
     updatedAt,
   };

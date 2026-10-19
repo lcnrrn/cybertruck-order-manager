@@ -30,6 +30,8 @@ export interface Order {
   seq?: number;
   /** 품목별 제작 완료 개수 {itemKey: doneCount} */
   doneMap?: Record<string, number>;
+  /** 품목별 단가 직접 지정(원) {제품명: 단가} — 0이면 서비스(무료) */
+  prices?: Record<string, number>;
   createdAt: number;
   updatedAt: number;
 }

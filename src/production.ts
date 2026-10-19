@@ -174,15 +174,26 @@ export function buildProductionSummary(orders: Order[], catalog: Product[]): Pro
 }
 
 /** 제품 판매가 × 수량 자동 금액 */
-export function autoOrderAmount(order: Order, catalog: Product[]): number {
+/** 품목 단가: 주문에 직접 지정한 값(0=서비스) 우선, 없으면 제품 판매가 */
+export function unitPrice(order: Pick<Order, 'prices'>, name: string, catalog: Product[]): number {
+  const o = order.prices?.[name];
+  if (typeof o === 'number' && o >= 0) return o;
+  return catalog.find((c) => c.name === name)?.price || 0;
+}
+
+export function isServiceItem(order: Pick<Order, 'prices'>, name: string): boolean {
+  return order.prices?.[name] === 0;
+}
+
+export function autoOrderAmount(order: Pick<Order, 'items' | 'prices'>, catalog: Product[]): number {
   const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
   let sum = 0;
   for (const p of r.products) {
-    const prod = catalog.find((c) => c.name === p.name);
-    sum += (prod?.price || 0) * p.qty;
+    if (p.name === SHIPPING_NAME) continue;
+    sum += unitPrice(order, p.name, catalog) * p.qty;
   }
   const ship = catalog.find((c) => c.name === SHIPPING_NAME);
-  if (ship?.price && /택배/.test(order.items || '')) sum += ship.price;
+  if (ship && /택배/.test(order.items || '')) sum += unitPrice(order, SHIPPING_NAME, catalog);
   return sum;
 }
 
