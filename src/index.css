@@ -1210,3 +1210,50 @@ a {
 .fil-g-unit { font-size: 0.8rem; color: #9ca3af; }
 .fil-reset { min-width: 36px; min-height: 36px; }
 .fil-add { align-self: flex-start; font-size: 0.85rem; }
+
+/* ───── 주문 폼 컴팩트 (입력칸 글씨는 16px 유지: iOS 확대 방지) ───── */
+.order-form { gap: 8px; }
+.order-form .field { gap: 4px; }
+.order-form .field input, .order-form .field textarea { min-height: 40px; padding: 8px 10px; border-radius: 10px; }
+.order-form .product-chip-row { gap: 6px; margin-bottom: 6px; }
+.order-form .product-chip { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.order-form .product-note-field { margin-top: 0; }
+.order-form .product-preview { margin: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order-form .hint { margin: 0; }
+
+/* 제품 줄: 한 줄 */
+.order-form .qty-list { margin: 4px 0 0; gap: 4px; }
+.order-form .qty-list li { flex-direction: row; align-items: center; padding: 3px 6px; gap: 0; border-radius: 8px; }
+.order-form .qty-line { display: flex; align-items: center; gap: 4px; width: 100%; font-size: 13px; }
+.order-form .qty-name { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.order-form .qty-stepper { gap: 2px; }
+.order-form .qty-stepper .btn-icon { min-width: 32px; min-height: 32px; width: 32px; height: 32px; padding: 0; font-size: 1rem; }
+.order-form .qty-stepper b { min-width: 18px; font-size: 14px; }
+.order-form .qty-line input { width: 64px; min-height: 32px; height: 32px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: inherit; font-size: 16px; text-align: right; }
+.order-form .qty-sub { flex: none; min-width: 56px; text-align: right; font-size: 12px; color: #e5e7eb; }
+.order-form .service-btn { margin-left: 0; min-height: 32px; padding: 0 6px; font-size: 11px; border-radius: 999px; }
+.order-form .qty-total { margin: 2px 0 0; font-size: 13px; }
+
+/* 필라멘트: 접힘 요약 + 한 줄 행 */
+.fil-pick.compact { margin-top: 2px; gap: 2px; }
+.fil-summary { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted, #9ca3af); font: inherit; font-size: 13px; text-align: left; }
+.fil-edited { font-style: normal; font-size: 11px; padding: 0 6px; border-radius: 999px; background: #78350f; color: #fde68a; }
+.fil-caret { margin-left: auto; }
+.fil-hint { font-size: 11px; color: #6b7280; }
+.fil-pick.compact .fil-row { padding: 0; border: none; margin: 0; gap: 0; }
+.fil-pick.compact .fil-row.overridden .fil-g-input { color: #fbbf24; border-color: #b45309; }
+.fil-pick.compact .fil-row-top { flex-wrap: nowrap; gap: 4px; font-size: 13px; }
+.fil-pick.compact .fil-dot { flex: none; }
+.fil-pick.compact .fil-row-name { flex: 1; min-width: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fil-pick.compact .fil-g-input { width: 56px; min-height: 32px; height: 32px; padding: 2px 4px; font-size: 16px; border-radius: 6px; }
+.fil-pick.compact .fil-g-unit { flex: none; font-size: 11px; }
+.fil-pick.compact select.fil-type { flex: 0 1 112px; min-width: 0; width: 112px; min-height: 32px; height: 32px; font-size: 16px; padding: 0 4px; border-radius: 6px; }
+.fil-pick.compact .fil-reset { min-width: 32px; min-height: 32px; width: 32px; height: 32px; padding: 0; font-size: 14px; }
+.fil-pick.compact .fil-add { font-size: 12px; padding: 2px 0; min-height: 0; }
+.order-form .qty-list li { min-width: 0; overflow: hidden; }
+.order-form .qty-line { min-width: 0; }
+.order-form .qty-line input { width: 52px !important; min-width: 0; flex: none; padding: 2px 4px; }
+.order-form .qty-sub { min-width: 0; }
+.order-form .service-btn { flex: none; }
+.fil-pick.compact .fil-row, .fil-pick.compact .fil-row-top { width: 100%; align-self: stretch; }
+.fil-pick.compact .fil-g-input { width: 52px !important; flex: none; }

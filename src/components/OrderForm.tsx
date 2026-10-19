@@ -80,6 +80,7 @@ export function OrderForm({
   /** 이 주문만의 필라멘트 줄 총량(g) */
   const [fgrams, setFgrams] = useState<Record<string, number>>({});
   const [gramText, setGramText] = useState<Record<string, string>>({});
+  const [filOpen, setFilOpen] = useState(false);
   const [amountText, setAmountText] = useState('');
 
   useEffect(() => {
@@ -256,15 +257,13 @@ export function OrderForm({
           <ul className="qty-list" aria-label="제품별 수량">
             {orderedSelected().map((name) => (
               <li key={name} className={priceOf(name) === 0 && catalogPrice(name) > 0 ? 'is-service' : ''}>
-                <div className="qty-top">
-                  <span className="qty-name">{name}</span>
+                <div className="qty-line">
+                  <span className="qty-name" title={name}>{name}</span>
                   <span className="qty-stepper">
                     <button type="button" className="btn-icon" aria-label="수량 빼기" onClick={() => changeQty(name, -1)} disabled={(qty[name] || 1) <= 1}>−</button>
                     <b>{qty[name] || 1}</b>
                     <button type="button" className="btn-icon" aria-label="수량 더하기" onClick={() => changeQty(name, 1)}>+</button>
                   </span>
-                </div>
-                <div className="qty-price">
                   <input
                     inputMode="numeric"
                     aria-label={`${name} 단가`}
@@ -275,7 +274,7 @@ export function OrderForm({
                       setPrices((p) => ({ ...p, [name]: v }));
                     }}
                   />
-                  <span>원 × {qty[name] || 1} = <b>{formatWon(priceOf(name) * (qty[name] || 1))}</b></span>
+                  <b className="qty-sub">{formatWon(priceOf(name) * (qty[name] || 1))}</b>
                   <button
                     type="button"
                     className={`btn btn-compact service-btn ${priceOf(name) === 0 ? 'on' : ''}`}
@@ -289,7 +288,7 @@ export function OrderForm({
                       });
                     }}
                   >
-                    {priceOf(name) === 0 ? '서비스 ✓' : '서비스'}
+                    {priceOf(name) === 0 ? '서비스✓' : '서비스'}
                   </button>
                 </div>
               </li>
@@ -337,11 +336,24 @@ export function OrderForm({
           );
           if (slots.length === 0) return null;
           const opts = filament.types.filter((t) => !t.hidden);
+          const totalG = Math.round(slots.reduce((a, sl) => a + sl.grams * sl.qty, 0) * 10) / 10;
+          const typeNames = Array.from(new Set(slots.filter((sl) => sl.grams > 0).map((sl) => typeLabel(filament.types.find((x) => x.id === sl.typeId)))));
+          const edited = slots.some((sl) => sl.overrideTotal !== undefined);
+          const summary = (
+            <button type="button" className="fil-summary" onClick={() => setFilOpen(!filOpen)} aria-expanded={filOpen}>
+              🧵 필라멘트 약 {totalG.toLocaleString('ko-KR')}g
+              {typeNames.length ? ` · ${typeNames[0]}${typeNames.length > 1 ? ` 외 ${typeNames.length - 1}` : ''}` : ''}
+              {edited ? <em className="fil-edited">수정됨</em> : null}
+              <span className="fil-caret">{filOpen ? '▾' : '▸'}</span>
+            </button>
+          );
+          if (!filOpen) return <div className="fil-pick compact">{summary}</div>;
           const byProduct = new Map<string, number>();
           for (const sl of slots) byProduct.set(sl.product, Math.max(byProduct.get(sl.product) ?? -1, sl.idx));
           return (
-            <div className="fil-pick">
-              <span className="hint">🧵 필라멘트 (g은 이 주문의 그 줄 총량 · 수량 포함 · 이 주문에만 적용)</span>
+            <div className="fil-pick compact">
+              {summary}
+              <span className="fil-hint">g = 이 주문의 그 줄 총량(수량 포함) · 이 주문에만 적용</span>
               {slots.map((sl, i) => {
                 const k = `${sl.product}#${sl.idx}`;
                 const t = filament.types.find((x) => x.id === sl.typeId);
@@ -369,20 +381,8 @@ export function OrderForm({
                           return n;
                         })}
                       />
-                      <span className="fil-g-unit">g{sl.fullQty > 1 ? ` (×${sl.fullQty} 전체)` : ''}</span>
-                      {sl.overrideTotal !== undefined && !sl.extra ? (
-                        <button type="button" className="btn-icon fil-reset" aria-label="기본값으로" title={`기본 ${sl.catalogGrams * sl.fullQty}g`}
-                          onClick={() => setFgrams((m) => { const n = { ...m }; delete n[k]; return n; })}>↺</button>
-                      ) : null}
-                      {sl.extra && sl.idx > 0 ? (
-                        <button type="button" className="btn-icon fil-reset" aria-label="이 줄 삭제"
-                          onClick={() => {
-                            setFgrams((m) => { const n = { ...m }; delete n[k]; return n; });
-                            setPick((m) => { const n = { ...m }; delete n[k]; return n; });
-                          }}>✕</button>
-                      ) : null}
-                    </div>
-                    <select
+                      <span className="fil-g-unit">g{sl.fullQty > 1 ? `·×${sl.fullQty}` : ''}</span>
+                    <select className="fil-type"
                       value={sl.typeId}
                       onChange={(e) => {
                         const v = e.target.value;
@@ -398,9 +398,21 @@ export function OrderForm({
                         <option key={o.id} value={o.id}>{typeLabel(o)}</option>
                       ))}
                     </select>
+                      {sl.overrideTotal !== undefined && !sl.extra ? (
+                        <button type="button" className="btn-icon fil-reset" aria-label="기본값으로" title={`기본 ${sl.catalogGrams * sl.fullQty}g`}
+                          onClick={() => setFgrams((m) => { const n = { ...m }; delete n[k]; return n; })}>↺</button>
+                      ) : null}
+                      {sl.extra && sl.idx > 0 ? (
+                        <button type="button" className="btn-icon fil-reset" aria-label="이 줄 삭제"
+                          onClick={() => {
+                            setFgrams((m) => { const n = { ...m }; delete n[k]; return n; });
+                            setPick((m) => { const n = { ...m }; delete n[k]; return n; });
+                          }}>✕</button>
+                      ) : null}
+                    </div>
                     {isLastOfProduct ? (
                       <button type="button" className="btn-link fil-add" onClick={() => setFgrams((m) => ({ ...m, [`${sl.product}#${sl.idx + 1}`]: 0 }))}>
-                        + 필라멘트 추가 ({sl.product})
+                        + 필라멘트 추가
                       </button>
                     ) : null}
                   </div>
