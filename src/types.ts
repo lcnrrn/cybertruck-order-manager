@@ -32,6 +32,8 @@ export interface Order {
   doneMap?: Record<string, number>;
   /** 품목별 단가 직접 지정(원) {제품명: 단가} — 0이면 서비스(무료) */
   prices?: Record<string, number>;
+  /** 이 주문만의 필라멘트 사용량 직접 지정 {'제품명#순번': 그 줄 총 g(수량 전체)} */
+  filamentGrams?: Record<string, number>;
   createdAt: number;
   updatedAt: number;
 }

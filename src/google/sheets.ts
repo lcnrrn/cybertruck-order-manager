@@ -59,8 +59,8 @@ function orderToRow(o: Order): string[] {
       ? JSON.stringify({ u: o.filamentUse, p: o.filamentPick })
       : '',
     // R: 순번·부분 제작 — id를 함께 저장해 구버전 앱이 A:Q만 다시 써서 행이 밀려도 엉뚱한 주문에 붙지 않게
-    o.seq || (o.doneMap && Object.keys(o.doneMap).length) || (o.prices && Object.keys(o.prices).length)
-      ? JSON.stringify({ i: o.id, s: o.seq, d: o.doneMap, p: o.prices })
+    o.seq || (o.doneMap && Object.keys(o.doneMap).length) || (o.prices && Object.keys(o.prices).length) || (o.filamentGrams && Object.keys(o.filamentGrams).length)
+      ? JSON.stringify({ i: o.id, s: o.seq, d: o.doneMap, p: o.prices, g: o.filamentGrams })
       : '',
   ];
 }
@@ -114,18 +114,20 @@ function parseFilamentCol(raw: string | undefined): Pick<Order, 'filamentUse' | 
   }
 }
 
-function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq' | 'doneMap' | 'prices'> {
+function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams'> {
   const t = String(raw ?? '').trim();
   if (!t) return {};
   try {
-    const j = JSON.parse(t) as { i?: unknown; s?: unknown; d?: unknown; p?: unknown };
+    const j = JSON.parse(t) as { i?: unknown; s?: unknown; d?: unknown; p?: unknown; g?: unknown };
     if (j.i !== id) return {};
-    const out: Pick<Order, 'seq' | 'doneMap' | 'prices'> = {};
+    const out: Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams'> = {};
     if (typeof j.s === 'number' && j.s > 0) out.seq = j.s;
     const d = numMap(j.d);
     if (d) out.doneMap = d;
     const pr = numMap(j.p);
     if (pr) out.prices = pr;
+    const g = numMap(j.g);
+    if (g) out.filamentGrams = g;
     return out;
   } catch {
     return {};
