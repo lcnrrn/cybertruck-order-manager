@@ -1257,3 +1257,19 @@ a {
 .order-form .service-btn { flex: none; }
 .fil-pick.compact .fil-row, .fil-pick.compact .fil-row-top { width: 100%; align-self: stretch; }
 .fil-pick.compact .fil-g-input { width: 52px !important; flex: none; }
+
+/* #50: 아이폰 폭(320–430px)에서 가로 넘침 방지 — 줄 자동 접기 */
+.order-form, .order-form * { box-sizing: border-box; }
+.order-form { max-width: 100%; min-width: 0; }
+.order-form > *, .order-form label, .order-form fieldset, .order-form .field { min-width: 0; max-width: 100%; }
+.order-form input, .order-form select, .order-form textarea { max-width: 100%; }
+.order-form .product-chip-row { flex-wrap: wrap; min-width: 0; }
+.order-form .qty-line { flex-wrap: wrap; row-gap: 2px; }
+.order-form .qty-name { flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.order-form .qty-sub { flex: 1 1 auto; }
+.fil-pick.compact { min-width: 0; max-width: 100%; }
+.fil-pick.compact .fil-row-top { flex-wrap: wrap; row-gap: 2px; min-width: 0; }
+.fil-pick.compact .fil-row-name { flex: 1 1 calc(100% - 20px); white-space: normal; overflow-wrap: anywhere; line-height: 1.3; }
+.fil-pick.compact select.fil-type { flex: 1 1 96px; width: auto; max-width: 160px; }
+.fil-summary { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+html, body { overflow-x: clip; }
