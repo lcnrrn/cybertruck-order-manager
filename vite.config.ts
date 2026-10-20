@@ -2,14 +2,26 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// 배포마다 바뀌는 빌드 id (시간순 비교 가능) — 옛 버전 앱 감지용
+const BUILD_ID = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+const versionFile = {
+  name: 'version-file',
+  generateBundle(this: { emitFile: (f: { type: 'asset'; fileName: string; source: string }) => void }) {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: BUILD_ID }) });
+  },
+};
+
 // GitHub Pages: https://lcnrrn.github.io/cybertruck-order-manager/
 // 로컬/다른 호스트에서는 base를 '/'로 바꿔도 됩니다.
 export default defineConfig({
   base: '/cybertruck-order-manager/',
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   plugins: [
     react(),
+    versionFile,
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: { skipWaiting: true, clientsClaim: true, cleanupOutdatedCaches: true, navigateFallbackDenylist: [/version\.json/] },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: '사이버트럭 주문 관리',
