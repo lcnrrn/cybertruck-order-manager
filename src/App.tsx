@@ -474,6 +474,10 @@ export default function App() {
           onSync={() => void google.syncNow()}
           onDisconnect={google.disconnect}
           onOpenSettings={() => setSheet('google')}
+          dirty={google.dirty}
+          lastSyncAt={google.lastSyncAt}
+          lastError={google.lastError}
+          outdated={google.outdated}
         />
         {tab === 'orders' ? (
           <div className="toolbar">

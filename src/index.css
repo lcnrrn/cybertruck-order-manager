@@ -1368,3 +1368,12 @@ html, body { overflow-x: clip; }
   .tab-orders .order-list, .tab-make .order-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; align-items: start; }
   .tab-orders .order-list > .empty { grid-column: 1 / -1; }
 }
+
+/* 저장 상태 한 줄 */
+.save-status { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; margin: 0 0 6px; padding: 4px 10px; border-radius: 10px; font-size: 13px; text-align: left; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); }
+.save-status i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.save-status span { min-width: 0; overflow-wrap: anywhere; }
+.save-status.ok span { color: #bbf7d0; }
+.save-status.busy i { background: var(--warn); }
+.save-status.bad { border-color: #b91c1c; background: rgba(127, 29, 29, 0.45); color: #fecaca; font-weight: 600; cursor: pointer; }
+.save-status.bad i { background: var(--danger); }
