@@ -9,19 +9,17 @@ import {
   requestAccessToken,
   revokeAccessToken,
 } from '../google/gis';
-import {
-  canPushLocalOverRemote,
-  mergeOrdersForSync,
-  pullOrders,
-  pushOrders,
-} from '../google/sheets';
-import { syncSettings } from '../google/settingsSync';
 import { SETTINGS_CHANGED_EVENT } from '../settingsMeta';
+import { checkOutdated } from '../appVersion';
+import { isAuthError, ordersFingerprint, pullMergePush } from '../google/syncCore';
 
 const LS_SIGNED = 'cybertruck-google-signed';
 const LS_EMAIL = 'cybertruck-google-email';
-const DEBOUNCE_MS = 2000;
-const POLL_MS = 60000;
+/** 시트에 아직 안 올라간 변경이 있는지 (앱을 껐다 켜도 유지 → 다시 연결되면 자동 업로드) */
+const LS_DIRTY = 'cybertruck-sync-dirty';
+const LS_LAST_SYNC = 'cybertruck-last-sync';
+const DEBOUNCE_MS = 1200;
+const POLL_MS = 45000;
 
 export type SyncStatus = 'idle' | 'connecting' | 'syncing' | 'error';
 
@@ -29,6 +27,22 @@ interface Options {
   orders: Order[];
   replaceOrders: (next: Order[]) => void;
   onToast?: (msg: string) => void;
+}
+
+function lsNum(k: string): number {
+  try {
+    return Number(localStorage.getItem(k)) || 0;
+  } catch {
+    return 0;
+  }
+}
+function lsSet(k: string, v: string | null): void {
+  try {
+    if (v === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, v);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
@@ -44,35 +58,29 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
   const [lastError, setLastError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [configured, setConfigured] = useState(() => hasGoogleConfig());
+  const [dirtySince, setDirtySince] = useState<number>(() => lsNum(LS_DIRTY));
+  const [lastSyncAt, setLastSyncAt] = useState<number>(() => lsNum(LS_LAST_SYNC));
+  const [outdated, setOutdated] = useState(false);
 
   const ordersRef = useRef(orders);
   const tokenRef = useRef<string | null>(null);
-  const skipPushRef = useRef(false);
-  /** Block write-through until the first pull+merge finishes (prevents race wipe). */
-  const initialSyncDoneRef = useRef(false);
-  /** Row count from last successful pull; used to refuse empty/sample overwrite. */
+  /** 시트와 마지막으로 맞춘 주문 상태 — 이것과 다르면 '저장 안 된 변경' */
+  const syncedFpRef = useRef<string | null>(null);
   const lastRemoteCountRef = useRef(-1);
+  const outdatedRef = useRef(false);
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingRef = useRef(false);
   const debounceTimer = useRef<number | null>(null);
   const signedIntent = useRef(false);
   const replaceOrdersRef = useRef(replaceOrders);
   const onToastRef = useRef(onToast);
 
   useEffect(() => {
-    ordersRef.current = orders;
-  }, [orders]);
-
-  useEffect(() => {
-    tokenRef.current = accessToken;
-  }, [accessToken]);
-
-  useEffect(() => {
     replaceOrdersRef.current = replaceOrders;
   }, [replaceOrders]);
-
   useEffect(() => {
     onToastRef.current = onToast;
   }, [onToast]);
-
   useEffect(() => {
     try {
       signedIntent.current = localStorage.getItem(LS_SIGNED) === '1';
@@ -81,101 +89,208 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     }
   }, []);
 
-  const refreshConfigured = useCallback(() => {
-    setConfigured(hasGoogleConfig());
+  const markDirty = useCallback(() => {
+    const now = Date.now();
+    if (!lsNum(LS_DIRTY)) lsSet(LS_DIRTY, String(now));
+    setDirtySince((d) => d || now);
   }, []);
 
-  const guardedPush = useCallback(async (token: string, next: Order[]) => {
-    const guard = canPushLocalOverRemote(next, lastRemoteCountRef.current);
-    if (!guard.ok) {
-      onToastRef.current?.(guard.reason);
-      setLastError(guard.reason);
-      setStatus('error');
-      return false;
-    }
-    await pushOrders(token, next);
-    lastRemoteCountRef.current = next.length;
-    return true;
+  const refreshConfigured = useCallback(() => setConfigured(hasGoogleConfig()), []);
+
+  const dropToken = useCallback((msg: string) => {
+    clearStoredToken();
+    setAccessToken(null);
+    tokenRef.current = null;
+    setNeedsLogin(true);
+    setLastError(msg);
+    setStatus('error');
   }, []);
 
-  const runPullMergePush = useCallback(
-    async (token: string, toastMsg?: string) => {
-      setStatus('syncing');
-      setLastError(null);
-      try {
-        await syncSettings(token).catch(() => false); // 삭제 기록 먼저 받아서 되살아나지 않게
-        const remote = await pullOrders(token);
-        lastRemoteCountRef.current = remote.length;
-        const merged = mergeOrdersForSync(ordersRef.current, remote);
-        skipPushRef.current = true;
-        replaceOrdersRef.current(merged);
-        const pushed = await guardedPush(token, merged);
-        initialSyncDoneRef.current = true;
-        void syncSettings(token).catch(() => {
-          /* settings sync is best-effort */
-        });
-        setStatus(pushed ? 'idle' : 'error');
-        if (pushed) onToastRef.current?.(toastMsg || '동기화 완료');
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '동기화 실패';
-        setLastError(msg);
-        setStatus('error');
-        onToastRef.current?.(msg);
-        // Allow later manual sync; still block auto write-through until success.
-        throw e;
-      }
+  /**
+   * 한 번의 동기화 = (1) 설정 받기·합치기·올리기 (2) 주문 최신본 받기 → 항목별 최신 updatedAt 병합 → 다르면 올리기.
+   * 항상 먼저 받아서 합친 뒤 쓰므로, 옛 데이터가 더 새 데이터를 덮을 수 없음. 동시에 한 개만 실행(줄 세움).
+   */
+  const syncOnce = useCallback(
+    (reason: 'open' | 'edit' | 'poll' | 'manual', toastMsg?: string): Promise<boolean> => {
+      const run = async (): Promise<boolean> => {
+        const token = tokenRef.current;
+        if (!token) {
+          if (lsNum(LS_DIRTY)) setNeedsLogin(true);
+          return false;
+        }
+        if (!navigator.onLine) {
+          setLastError('오프라인 — 연결되면 자동 저장');
+          setStatus('error');
+          return false;
+        }
+        if (await checkOutdated()) {
+          outdatedRef.current = true;
+          setOutdated(true);
+          setLastError('옛 버전 앱 — 새 버전으로 새로고침 중');
+          setStatus('error');
+          return false;
+        }
+        const startedDirty = lsNum(LS_DIRTY);
+        if (reason !== 'poll') setStatus('syncing');
+        try {
+          const local = ordersRef.current;
+          const { merged, remoteCount } = await pullMergePush(token, local);
+          lastRemoteCountRef.current = remoteCount;
+          const mergedFp = ordersFingerprint(merged);
+          if (mergedFp !== ordersFingerprint(ordersRef.current)) {
+            // 받는 동안 사용자가 또 고쳤으면 그 수정은 다음 회차에 반영 (지금 덮지 않음)
+            if (ordersRef.current === local) {
+              syncedFpRef.current = mergedFp; // 이 교체는 '로컬 수정'이 아님
+              ordersRef.current = merged;
+              replaceOrdersRef.current(merged);
+            }
+          }
+          syncedFpRef.current = mergedFp;
+          // 동기화 도중 새로 고친 게 없을 때만 '저장됨'
+          if (lsNum(LS_DIRTY) === startedDirty && ordersFingerprint(ordersRef.current) === mergedFp) {
+            lsSet(LS_DIRTY, null);
+            setDirtySince(0);
+          }
+          const now = Date.now();
+          lsSet(LS_LAST_SYNC, String(now));
+          setLastSyncAt(now);
+          setLastError(null);
+          setStatus('idle');
+          if (toastMsg) onToastRef.current?.(toastMsg);
+          return true;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : '동기화 실패';
+          if (isAuthError(msg)) {
+            dropToken('구글 로그인 만료 — 탭해서 다시 연결');
+          } else {
+            setLastError(msg);
+            setStatus('error');
+            if (reason !== 'poll') onToastRef.current?.(`저장 실패: ${msg}`);
+          }
+          return false;
+        }
+      };
+      const p = queueRef.current.then(run, run);
+      queueRef.current = p.catch(() => undefined);
+      return p;
     },
-    [guardedPush],
+    [dropToken],
   );
 
-  const pullingRef = useRef(false);
-  const backgroundPull = useCallback(async () => {
-    const token = tokenRef.current;
-    if (!token || !initialSyncDoneRef.current || pullingRef.current) return;
-    if (!navigator.onLine) return;
-    pullingRef.current = true;
-    try {
-      await syncSettings(token).catch(() => false);
-      const remote = await pullOrders(token);
-      lastRemoteCountRef.current = remote.length;
-      const local = ordersRef.current;
-      const merged = mergeOrdersForSync(local, remote);
-      if (JSON.stringify(merged) !== JSON.stringify(local)) {
-        skipPushRef.current = true;
-        replaceOrdersRef.current(merged);
-      }
-      if (JSON.stringify(merged) !== JSON.stringify(remote)) {
-        await guardedPush(token, merged);
-      }
-      await syncSettings(token).catch(() => false);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
-      if (/401|invalid|expired|UNAUTHENTICATED/i.test(msg)) {
-        // 토큰 만료: 팝업은 사용자 탭 안에서만 열 수 있어서, 다음 탭에 자동으로 다시 연결
-        clearStoredToken();
-        setAccessToken(null);
-        tokenRef.current = null;
-        setNeedsLogin(true);
-      }
-    } finally {
-      pullingRef.current = false;
+  // 로컬 주문이 바뀔 때마다: 시트 기준과 다르면 '저장 안 됨' 표시 + 잠시 후 자동 저장
+  useEffect(() => {
+    ordersRef.current = orders;
+    const fp = ordersFingerprint(orders);
+    if (syncedFpRef.current === null) {
+      // 앱을 켠 직후 첫 값 — 지난번 저장 안 된 표시는 LS_DIRTY 가 기억함
+      syncedFpRef.current = lsNum(LS_DIRTY) ? '' : fp;
+      return;
     }
-  }, [guardedPush]);
+    if (fp === syncedFpRef.current) return;
+    markDirty();
+    scheduleSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders]);
 
+  const scheduleSync = useCallback(() => {
+    if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+    debounceTimer.current = window.setTimeout(() => {
+      debounceTimer.current = null;
+      if (!tokenRef.current) {
+        setNeedsLogin(isSigned());
+        return;
+      }
+      if (pendingRef.current) return;
+      pendingRef.current = true;
+      void syncOnce('edit').finally(() => {
+        pendingRef.current = false;
+        if (lsNum(LS_DIRTY) && tokenRef.current && ordersFingerprint(ordersRef.current) !== syncedFpRef.current) scheduleSync();
+      });
+    }, DEBOUNCE_MS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncOnce]);
+
+  // 설정(제품·경로·문자·필라멘트 등) 수정도 똑같이 바로 저장
+  useEffect(() => {
+    const onChanged = () => {
+      markDirty();
+      scheduleSync();
+    };
+    window.addEventListener(SETTINGS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(SETTINGS_CHANGED_EVENT, onChanged);
+  }, [markDirty, scheduleSync]);
+
+  // 앱 열기/다시 보기/주기적으로: 최신본 먼저 받기
   useEffect(() => {
     if (!accessToken) return;
-    const id = window.setInterval(() => void backgroundPull(), POLL_MS);
+    const id = window.setInterval(() => void syncOnce('poll'), POLL_MS);
     const onVis = () => {
-      if (document.visibilityState === 'visible') void backgroundPull();
+      if (document.visibilityState !== 'visible') return;
+      if (!getStoredToken()) {
+        dropToken('구글 로그인 만료 — 탭해서 다시 연결');
+        return;
+      }
+      void syncOnce('open');
     };
+    const onOnline = () => void syncOnce('open');
     window.addEventListener('focus', onVis);
+    window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', onVis);
     return () => {
       window.clearInterval(id);
       window.removeEventListener('focus', onVis);
+      window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [accessToken, backgroundPull]);
+  }, [accessToken, syncOnce, dropToken]);
+
+  // 페이지를 닫기 직전 남은 저장 시도
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden' && debounceTimer.current && tokenRef.current) {
+        window.clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
+        void syncOnce('edit');
+      }
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  }, [syncOnce]);
+
+  // 버전 확인: 켤 때 + 다시 볼 때
+  useEffect(() => {
+    const run = () =>
+      void checkOutdated().then((o) => {
+        outdatedRef.current = o;
+        setOutdated(o);
+      });
+    run();
+    const onVis = () => document.visibilityState === 'visible' && run();
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  const adoptToken = useCallback(
+    async (token: string, toastMsg: string) => {
+      setAccessToken(token);
+      tokenRef.current = token;
+      setNeedsLogin(false);
+      lsSet(LS_SIGNED, '1');
+      signedIntent.current = true;
+      if (!localStorage.getItem(LS_EMAIL)) {
+        const mail = await fetchTokenEmail(token);
+        if (mail) {
+          setEmail(mail);
+          lsSet(LS_EMAIL, mail);
+        }
+      }
+      const ok = await syncOnce('open', toastMsg);
+      if (!ok && !tokenRef.current) throw new Error('auth');
+    },
+    [syncOnce],
+  );
+
+  const reconnectingRef = useRef(false);
 
   const connect = useCallback(async () => {
     if (!getClientId() || !getSheetId()) {
@@ -183,22 +298,16 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       return false;
     }
     if (reconnectingRef.current) return false;
-    initialSyncDoneRef.current = false;
     setStatus('connecting');
     setLastError(null);
     try {
       const token = await requestAccessToken({ prompt: 'consent' });
-      setAccessToken(token);
-      tokenRef.current = token;
-      setNeedsLogin(false);
       const mail = await fetchTokenEmail(token);
       if (mail) {
         setEmail(mail);
-        localStorage.setItem(LS_EMAIL, mail);
+        lsSet(LS_EMAIL, mail);
       }
-      localStorage.setItem(LS_SIGNED, '1');
-      signedIntent.current = true;
-      await runPullMergePush(token, '구글 시트 연결됨');
+      await adoptToken(token, '구글 시트 연결됨');
       return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : '연결 실패';
@@ -207,162 +316,66 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       onToastRef.current?.(msg);
       return false;
     }
-  }, [runPullMergePush]);
+  }, [adoptToken]);
 
   const disconnect = useCallback(() => {
-    if (debounceTimer.current) {
-      window.clearTimeout(debounceTimer.current);
-      debounceTimer.current = null;
-    }
     const t = tokenRef.current;
     if (t) revokeAccessToken(t);
     setAccessToken(null);
     tokenRef.current = null;
     setEmail(null);
     signedIntent.current = false;
-    initialSyncDoneRef.current = false;
     lastRemoteCountRef.current = -1;
-    try {
-      localStorage.removeItem(LS_SIGNED);
-      localStorage.removeItem(LS_EMAIL);
-    } catch {
-      /* ignore */
-    }
+    lsSet(LS_SIGNED, null);
+    lsSet(LS_EMAIL, null);
     setStatus('idle');
     setLastError(null);
     onToastRef.current?.('연결 해제됨');
   }, []);
 
   const syncNow = useCallback(async () => {
-    let token = tokenRef.current;
-    if (!token) {
+    if (!tokenRef.current) {
       if (!getClientId() || !getSheetId()) {
         onToastRef.current?.('설정에서 Client ID와 Sheet ID를 입력해 주세요.');
         return;
       }
+      if (reconnectingRef.current) return;
       setStatus('connecting');
       try {
-        if (reconnectingRef.current) return; // 첫 탭 자동 재연결이 이미 진행 중
-        token = await requestAccessToken({ prompt: '', hint: localStorage.getItem(LS_EMAIL) });
-        setNeedsLogin(false);
-        setAccessToken(token);
-        tokenRef.current = token;
-        const mail = await fetchTokenEmail(token);
-        if (mail) {
-          setEmail(mail);
-          localStorage.setItem(LS_EMAIL, mail);
-        }
-        localStorage.setItem(LS_SIGNED, '1');
-        signedIntent.current = true;
+        reconnectingRef.current = true;
+        const token = await requestAccessToken({ prompt: '', hint: localStorage.getItem(LS_EMAIL) });
+        await adoptToken(token, '동기화 다시 연결됨');
       } catch (e) {
         const msg = e instanceof Error ? e.message : '재인증 실패';
         setLastError(msg);
         setStatus('error');
         onToastRef.current?.(msg);
-        return;
+      } finally {
+        reconnectingRef.current = false;
       }
-    }
-    try {
-      await runPullMergePush(token);
-    } catch {
-      /* already toasted */
-    }
-  }, [runPullMergePush]);
-
-  // Debounced write-through — only after initial pull+merge succeeded
-  useEffect(() => {
-    if (!accessToken) return;
-    if (!initialSyncDoneRef.current) return;
-    if (skipPushRef.current) {
-      skipPushRef.current = false;
       return;
     }
-    if (!navigator.onLine) return;
+    await syncOnce('manual', '동기화 완료');
+  }, [adoptToken, syncOnce]);
 
-    if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
-    debounceTimer.current = window.setTimeout(() => {
-      const token = tokenRef.current;
-      if (!token || !initialSyncDoneRef.current) return;
-      setStatus('syncing');
-      void guardedPush(token, ordersRef.current)
-        .then((ok) => {
-          setStatus(ok ? 'idle' : 'error');
-          if (ok) setLastError(null);
-        })
-        .catch((e) => {
-          const msg = e instanceof Error ? e.message : '시트 저장 실패';
-          setLastError(msg);
-          setStatus('error');
-        });
-    }, DEBOUNCE_MS);
-
-    return () => {
-      if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
-    };
-  }, [orders, accessToken, guardedPush]);
-
-  // Debounced settings push (products, sources, SMS, filament) after local edits
-  useEffect(() => {
-    let timer: number | null = null;
-    const onChanged = () => {
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const token = tokenRef.current;
-        if (!token || !initialSyncDoneRef.current || !navigator.onLine) return;
-        void syncSettings(token).catch(() => {
-          /* retried on next poll */
-        });
-      }, DEBOUNCE_MS);
-    };
-    window.addEventListener(SETTINGS_CHANGED_EVENT, onChanged);
-    return () => {
-      window.removeEventListener(SETTINGS_CHANGED_EVENT, onChanged);
-      if (timer) window.clearTimeout(timer);
-    };
-  }, []);
-
-  /** 재연결 성공 후 공통 처리 */
-  const adoptToken = useCallback(
-    async (token: string, toastMsg: string) => {
-      setAccessToken(token);
-      tokenRef.current = token;
-      setNeedsLogin(false);
-      try {
-        localStorage.setItem(LS_SIGNED, '1');
-      } catch {
-        /* ignore */
-      }
-      signedIntent.current = true;
-      if (!localStorage.getItem(LS_EMAIL)) {
-        const mail = await fetchTokenEmail(token);
-        if (mail) {
-          setEmail(mail);
-          localStorage.setItem(LS_EMAIL, mail);
-        }
-      }
-      await runPullMergePush(token, toastMsg);
-    },
-    [runPullMergePush],
-  );
-
-  const isSigned = () => {
+  function isSigned() {
     try {
       return signedIntent.current || localStorage.getItem(LS_SIGNED) === '1';
     } catch {
       return signedIntent.current;
     }
-  };
+  }
 
-  // 앱 시작: 저장된 토큰이 아직 유효하면 그대로 바로 동기화 (팝업·버튼 없음)
+  // 앱 시작: 저장된 토큰이 유효하면 바로 받기→합치기→올리기
   useEffect(() => {
     let cancelled = false;
     async function tryRestore() {
       if (!isSigned() || !hasGoogleConfig() || tokenRef.current) return;
-      void loadGisScript().catch(() => undefined); // 다음 탭에서 즉시 팝업을 열 수 있게 미리 로드
+      void loadGisScript().catch(() => undefined);
       const stored = getStoredToken();
       if (stored) {
         try {
-          await adoptToken(stored, '자동 동기화 완료');
+          await adoptToken(stored, '최신 데이터 받음');
           return;
         } catch {
           clearStoredToken();
@@ -373,17 +386,17 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       }
       if (!cancelled) {
         setStatus('idle');
-        setNeedsLogin(true); // 첫 탭에서 자동 재연결
+        setNeedsLogin(true);
       }
     }
     void tryRestore();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adoptToken]);
 
-  // 토큰이 만료된 상태면: 화면 어디든 처음 탭할 때(사용자 제스처) 자동으로 재연결
-  const reconnectingRef = useRef(false);
+  // 토큰 만료 상태: 화면 아무 곳이나 처음 탭할 때 자동 재연결 (iOS 는 탭 안에서만 팝업 허용)
   useEffect(() => {
     if (!needsLogin || accessToken) return;
     const onTap = () => {
@@ -396,34 +409,17 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       } catch {
         /* ignore */
       }
-      // 제스처 안에서 동기적으로 팝업 열기 (구글 로그인 유지 중이면 잠깐 떴다 자동으로 닫힘)
       requestAccessToken({ prompt: '', hint })
-        .then((t) => adoptToken(t, '동기화 다시 연결됨'))
-        .catch(() => {
-          setStatus('idle');
-        })
+        .then((t) => adoptToken(t, '다시 연결됨 · 저장 완료'))
+        .catch(() => setStatus('error'))
         .finally(() => {
           reconnectingRef.current = false;
         });
     };
-    // 터치 끝(click) 시점이어야 iOS가 팝업을 허용
     document.addEventListener('click', onTap, { capture: true, once: true });
     return () => document.removeEventListener('click', onTap, { capture: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsLogin, accessToken, adoptToken]);
-
-  // 앱을 다시 열었을 때(포그라운드) 토큰이 만료됐으면 재연결 대기 상태로
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState !== 'visible' || !tokenRef.current) return;
-      if (!getStoredToken()) {
-        setAccessToken(null);
-        tokenRef.current = null;
-        setNeedsLogin(true);
-      }
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, []);
 
   return {
     connected: Boolean(accessToken),
@@ -432,6 +428,9 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     status,
     lastError,
     configured,
+    dirty: dirtySince > 0,
+    lastSyncAt,
+    outdated,
     refreshConfigured,
     connect,
     disconnect,

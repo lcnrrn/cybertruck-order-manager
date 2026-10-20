@@ -4,8 +4,15 @@ import { mergeById, mergeExpenseStates, normalizeExpenses } from '../expenses';
 import {
   SETTINGS_APPLIED_EVENT,
   SETTING_LS_KEYS,
+  ITEM_KEYS,
+  getItemStamps,
   getSettingsMeta,
+  mergeItems,
+  mergeStamps,
+  setItemStamps,
   setSettingMeta,
+  setSettingSnapshot,
+  type ItemStamps,
   type SettingKey,
 } from '../settingsMeta';
 
@@ -58,12 +65,24 @@ async function ensureSheet(token: string, id: string): Promise<void> {
   );
 }
 
+const STAMPS_ROW = 'itemStamps';
+let remoteStamps: ItemStamps = {};
+
 async function pullRemote(token: string, id: string): Promise<Map<SettingKey, Entry>> {
   const range = encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:C`);
   const res = await check(await req(token, `${id}/values/${range}`), '설정 읽기 실패');
   const data = (await res.json()) as { values?: string[][] };
   const out = new Map<SettingKey, Entry>();
+  remoteStamps = {};
   for (const row of data.values || []) {
+    if (String(row[0] || '').trim() === STAMPS_ROW) {
+      try {
+        remoteStamps = (JSON.parse(String(row[1] || '{}')) as ItemStamps) || {};
+      } catch {
+        remoteStamps = {};
+      }
+      continue;
+    }
     const key = String(row[0] || '').trim() as SettingKey;
     if (!KEYS.includes(key)) continue;
     out.set(key, { json: String(row[1] ?? ''), updatedAt: Number(row[2]) || 0 });
@@ -71,10 +90,10 @@ async function pullRemote(token: string, id: string): Promise<Map<SettingKey, En
   return out;
 }
 
-async function pushRemote(token: string, id: string, map: Map<SettingKey, Entry>): Promise<void> {
+async function pushRemote(token: string, id: string, map: Map<SettingKey, Entry>, stamps: ItemStamps): Promise<void> {
   const range = encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:C`);
   await check(await req(token, `${id}/values/${range}:clear`, { method: 'POST', body: '{}' }), '설정 비우기 실패');
-  const values = [HEADERS, ...KEYS.filter((k) => map.has(k)).map((k) => [k, map.get(k)!.json, String(map.get(k)!.updatedAt)])];
+  const values = [HEADERS, ...KEYS.filter((k) => map.has(k)).map((k) => [k, map.get(k)!.json, String(map.get(k)!.updatedAt)]), [STAMPS_ROW, JSON.stringify(stamps), String(Date.now())]];
   await check(
     await req(token, `${id}/values/${encodeURIComponent(`${SETTINGS_SHEET_NAME}!A1`)}?valueInputOption=RAW`, {
       method: 'PUT',
@@ -105,6 +124,7 @@ function writeLocal(key: SettingKey, e: Entry): void {
     /* ignore */
   }
   setSettingMeta(key, e.updatedAt);
+  setSettingSnapshot(key, e.json);
 }
 
 interface FilamentLike {
@@ -179,6 +199,9 @@ async function syncSettingsOnce(token: string): Promise<boolean> {
   if (!id) return false;
   await ensureSheet(token, id);
   const remote = await pullRemote(token, id);
+  const localStamps = getItemStamps();
+  const rStamps = remoteStamps;
+  const stamps = mergeStamps(localStamps, rStamps);
   const merged = new Map<SettingKey, Entry>();
   let localChanged = false;
   let remoteChanged = false;
@@ -201,7 +224,13 @@ async function syncSettingsOnce(token: string): Promise<boolean> {
     }
     else if (!l) m = r;
     else if (!r) m = l;
-    else m = l.updatedAt > r.updatedAt ? l : r; // tie → remote (first pusher) wins
+    else if (ITEM_KEYS.includes(key) && l.json !== r.json) {
+      // 항목 단위 병합: 두 기기에서 서로 다른 제품을 고쳐도 둘 다 살아남음
+      m = {
+        json: mergeItems(key, l, r, stamps[key] || {}, localStamps[key] || {}, rStamps[key] || {}),
+        updatedAt: Math.max(l.updatedAt, r.updatedAt),
+      };
+    } else m = l.updatedAt > r.updatedAt ? l : r; // tie → remote (first pusher) wins
     if (!m) continue;
     merged.set(key, m);
     if (!l || l.json !== m.json) {
@@ -213,7 +242,9 @@ async function syncSettingsOnce(token: string): Promise<boolean> {
     if (!r || r.json !== m.json || r.updatedAt !== m.updatedAt) remoteChanged = true;
   }
 
-  if (remoteChanged) await pushRemote(token, id, merged);
+  if (JSON.stringify(stamps) !== JSON.stringify(rStamps)) remoteChanged = true;
+  setItemStamps(stamps);
+  if (remoteChanged) await pushRemote(token, id, merged, stamps);
   if (localChanged) {
     try {
       window.dispatchEvent(new CustomEvent(SETTINGS_APPLIED_EVENT));
