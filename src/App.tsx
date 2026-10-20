@@ -1,5 +1,5 @@
 import { toYmd, withYmd } from './dates';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Order, PeriodRange, StatusFilter } from './types';
 import {
   FILTER_OPTIONS,
@@ -24,7 +24,7 @@ import { SourceManager } from './components/SourceManager';
 import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
 import { ProductionSummary } from './components/ProductionSummary';
-import { isUnpaid, orderHasProduct } from './production';
+import { buildProductionSummary, formatDuration, isUnpaid, orderHasProduct, orderAmount, pendingMinutes, formatWon } from './production';
 import { SalesReport } from './components/SalesReport';
 import { FilamentInventory } from './components/FilamentInventory';
 import { loadFilament, saveFilament, type FilamentState } from './filament';
@@ -47,6 +47,35 @@ const MENU_ITEMS: { id: Sheet; icon: string; label: string }[] = [
   { id: 'backup', icon: '💾', label: '데이터 백업' },
   { id: 'google', icon: '⚙️', label: '구글 설정' },
 ];
+
+type Tab = 'orders' | 'make' | 'filament' | 'sales' | 'more';
+const TAB_KEY = 'cybertruck-last-tab';
+const TABS: { id: Tab; icon: string; label: string; title: string }[] = [
+  { id: 'orders', icon: '📋', label: '주문', title: '주문' },
+  { id: 'make', icon: '🛠', label: '제작', title: '제작' },
+  { id: 'filament', icon: '🧵', label: '필라멘트', title: '필라멘트' },
+  { id: 'sales', icon: '💰', label: '매출', title: '매출' },
+  { id: 'more', icon: '⚙️', label: '더보기', title: '더보기 · 설정' },
+];
+const MORE_ITEMS: { id: Sheet; icon: string; label: string; desc: string }[] = [
+  { id: 'products', icon: '📦', label: '제품 관리', desc: '판매가 · 필라멘트 g · 출력 시간' },
+  { id: 'sources', icon: '🧭', label: '경로 관리', desc: '주문 경로(카페·클럽) 목록' },
+  { id: 'sms', icon: '💬', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
+  { id: 'tracking', icon: '📮', label: '송장 등록', desc: '우체국 접수증 붙여넣기' },
+  { id: 'import', icon: '📥', label: '주문 가져오기', desc: '네이버 폼 · 미리 알림' },
+  { id: 'google', icon: '🔗', label: '구글 시트 동기화', desc: '연결 · Client ID · Sheet ID' },
+  { id: 'backup', icon: '💾', label: '데이터 백업', desc: '내보내기 · 복원' },
+];
+
+function loadTab(): Tab {
+  try {
+    const v = localStorage.getItem(TAB_KEY);
+    if (v && TABS.some((t) => t.id === v)) return v as Tab;
+  } catch {
+    /* ignore */
+  }
+  return 'orders';
+}
 
 function loadStatusFilter(): StatusFilter {
   try {
@@ -118,6 +147,26 @@ export default function App() {
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sources, setSourcesState] = useState<string[]>(() => getSources());
+  const [tab, setTabState] = useState<Tab>(loadTab);
+  const scrollByTab = useRef<Partial<Record<Tab, number>>>({});
+  const switchTab = useCallback((next: Tab) => {
+    setTabState((cur) => {
+      if (cur === next) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return cur;
+      }
+      scrollByTab.current[cur] = window.scrollY;
+      return next;
+    });
+  }, []);
+  useLayoutEffect(() => {
+    window.scrollTo(0, scrollByTab.current[tab] || 0);
+    try {
+      localStorage.setItem(TAB_KEY, tab);
+    } catch {
+      /* ignore */
+    }
+  }, [tab]);
   // 시트(모달)가 열려 있는 동안 배경 스크롤 위치를 고정하고, 닫으면 원래 위치로 복원
   useLayoutEffect(() => {
     if (sheet === 'none') return;
@@ -343,110 +392,233 @@ export default function App() {
     onItemDone: (id: string, key: string, count: number) => setItemDone(id, key, count),
   };
 
+  const makeSummary = useMemo(() => buildProductionSummary(orders, products), [orders, products]);
+  const makeMin = useMemo(() => pendingMinutes(orders, products), [orders, products]);
+  const unpaidSum = useMemo(
+    () => orders.filter((o) => isUnpaid(o, products)).reduce((s, o) => s + orderAmount(o, products), 0),
+    [orders, products],
+  );
+  const workOrders = useMemo(
+    () =>
+      orders
+        .filter((o) => o.status === '대기' || o.status === '제작중')
+        .filter((o) => !productFilter || orderHasProduct(o, productFilter, products))
+        .sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || (a.createdAt || a.updatedAt) - (b.createdAt || b.updatedAt)),
+    [orders, productFilter, products],
+  );
+  const tabInfo = TABS.find((t) => t.id === tab)!;
+  const stats: { label: string; value: string; tone?: string }[] =
+    tab === 'orders'
+      ? [
+          { label: '작업중', value: `${counts.작업중}건` },
+          { label: '미입금', value: `${counts.미입금}건`, tone: counts.미입금 ? 'warn' : undefined },
+          { label: '전체', value: `${counts.전체}건` },
+        ]
+      : tab === 'make'
+        ? [
+            { label: '만들 제품', value: `${makeSummary.total}개` },
+            { label: '주문', value: `${makeSummary.orderCount}건` },
+            { label: '출력 시간', value: makeMin > 0 ? formatDuration(makeMin) : '—' },
+          ]
+        : tab === 'sales'
+          ? [
+              { label: '미입금', value: `${counts.미입금}건`, tone: counts.미입금 ? 'warn' : undefined },
+              { label: '미입금 금액', value: formatWon(unpaidSum), tone: unpaidSum ? 'warn' : undefined },
+            ]
+          : [];
+
+  const renderCards = (list: Order[]) =>
+    list.map((o) => <OrderCard key={o.id} order={o} products={products} {...sharedCardProps} />);
+
   return (
-    <div className="app view-card">
+    <div className={`app view-card tabbed tab-${tab}`}>
+      <nav className="tabbar" aria-label="화면 전환">
+        <div className="tabbar-brand">
+          <span className="eyebrow">Cybertruck · 3D Print</span>
+          <b>주문 관리</b>
+        </div>
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`tabbar-item${tab === t.id ? ' is-active' : ''}`}
+            aria-current={tab === t.id ? 'page' : undefined}
+            onClick={() => switchTab(t.id)}
+          >
+            <span className="tabbar-ico" aria-hidden>{t.icon}</span>
+            <span className="tabbar-label">{t.label}</span>
+            {t.id === 'orders' && counts.작업중 > 0 ? <span className="tabbar-badge">{counts.작업중}</span> : null}
+          </button>
+        ))}
+      </nav>
+
       <div className="sticky-top">
-      <header className="app-header">
-        <div>
-          <p className="eyebrow">Cybertruck · 3D Print</p>
-          <h1>주문 관리</h1>
-        </div>
-        <div className="header-actions">
-          <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}>
-            송장 등록
-          </button>
-          <button type="button" className="btn btn-primary" onClick={openNew}>
-            + 새 주문
-          </button>
-          <button type="button" className="btn btn-ghost menu-btn" onClick={() => setSheet('menu')} aria-label="메뉴 열기">
-            ☰
-          </button>
-        </div>
-      </header>
-
-      <GoogleSyncBar
-        connected={google.connected}
-        needsLogin={google.needsLogin}
-        email={google.email}
-        status={google.status}
-        onConnect={handleConnectClick}
-        onSync={() => void google.syncNow()}
-        onDisconnect={google.disconnect}
-        onOpenSettings={() => setSheet('google')}
-      />
-
-      <div className="toolbar">
-        <div className="toolbar-row">
-          <div className="search-wrap">
-            <input
-              className="search-input"
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="이름 · 연락처 · 주소 · 송장 · 품목 · 경로"
-              enterKeyHint="search"
-              aria-label="주문 검색"
-            />
-            {query ? (
-              <button
-                type="button"
-                className="search-clear"
-                onClick={() => setQuery('')}
-                aria-label="검색어 지우기"
-              >
-                ×
-              </button>
-            ) : null}
+        <header className="app-header screen-header">
+          <div className="screen-title">
+            <p className="eyebrow">Cybertruck · 3D Print</p>
+            <h1>{tabInfo.title}</h1>
           </div>
-        </div>
-        <StatusFilterBar value={filter} counts={counts} onChange={setFilter} />
-        <PeriodFilterBar value={period} onChange={setPeriod} />
-        <SourceFilterBar
-          options={sourceOptions}
-          value={sourceFilter}
-          onChange={setSourceFilter}
+          {tab === 'orders' ? (
+            <div className="header-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}>송장 등록</button>
+              <button type="button" className="btn btn-primary desktop-only" onClick={openNew}>+ 새 주문</button>
+            </div>
+          ) : null}
+        </header>
+        <GoogleSyncBar
+          connected={google.connected}
+          needsLogin={google.needsLogin}
+          email={google.email}
+          status={google.status}
+          onConnect={handleConnectClick}
+          onSync={() => void google.syncNow()}
+          onDisconnect={google.disconnect}
+          onOpenSettings={() => setSheet('google')}
         />
-        <div className="result-meta" aria-live="polite">
-          <span className="result-count">
-            {filtered.length}건 표시
-            {orders.length > 0 ? ` · 전체 ${orders.length}건` : ''}
-          </span>
-        </div>
-      </div>
-
-      </div>
-
-      <ProductionSummary
-        orders={orders}
-        products={products}
-        filament={filament}
-        selected={productFilter}
-        onSelect={setProductFilter}
-      />
-
-      <main className="order-list">
-        {filtered.length === 0 ? (
-          <div className="empty">
-            <p className="empty-title">{empty.title}</p>
-            {empty.hint ? <p className="empty-hint">{empty.hint}</p> : null}
-            {orders.length === 0 ? (
-              <button type="button" className="btn btn-primary" onClick={openNew}>
-                첫 주문 추가
-              </button>
-            ) : filter === '작업중' ? (
-              <button type="button" className="btn btn-secondary" onClick={() => setFilter('완료')}>
-                완료 목록 보기
-              </button>
-            ) : query ? (
-              <button type="button" className="btn btn-secondary" onClick={() => setQuery('')}>
-                검색 초기화
-              </button>
-            ) : null}
+        {tab === 'orders' ? (
+          <div className="toolbar">
+            <div className="toolbar-row">
+              <div className="search-wrap">
+                <input
+                  className="search-input"
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="이름 · 연락처 · 주소 · 송장 · 품목 · 경로"
+                  enterKeyHint="search"
+                  aria-label="주문 검색"
+                />
+                {query ? (
+                  <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="검색어 지우기">×</button>
+                ) : null}
+              </div>
+            </div>
+            <StatusFilterBar value={filter} counts={counts} onChange={setFilter} />
+            <PeriodFilterBar value={period} onChange={setPeriod} />
+            <SourceFilterBar options={sourceOptions} value={sourceFilter} onChange={setSourceFilter} />
+            <div className="result-meta" aria-live="polite">
+              <span className="result-count">
+                {filtered.length}건 표시
+                {orders.length > 0 ? ` · 전체 ${orders.length}건` : ''}
+              </span>
+              {productFilter ? (
+                <button type="button" className="chip-clear" onClick={() => setProductFilter(null)}>‘{productFilter}’ 필터 해제 ✕</button>
+              ) : null}
+            </div>
           </div>
-        ) : (
-          filtered.map((o) => <OrderCard key={o.id} order={o} products={products} {...sharedCardProps} />)
-        )}
-      </main>
+        ) : null}
+      </div>
+
+      {stats.length > 0 ? (
+        <div className="stat-cards">
+          {stats.map((x) => (
+            <div key={x.label} className={`stat-card${x.tone ? ` ${x.tone}` : ''}`}>
+              <span className="stat-label">{x.label}</span>
+              <b className="stat-value">{x.value}</b>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {tab === 'orders' && (
+        <main className="order-list">
+          {filtered.length === 0 ? (
+            <div className="empty">
+              <p className="empty-title">{empty.title}</p>
+              {empty.hint ? <p className="empty-hint">{empty.hint}</p> : null}
+              {orders.length === 0 ? (
+                <button type="button" className="btn btn-primary" onClick={openNew}>첫 주문 추가</button>
+              ) : filter === '작업중' ? (
+                <button type="button" className="btn btn-secondary" onClick={() => setFilter('완료')}>완료 목록 보기</button>
+              ) : query ? (
+                <button type="button" className="btn btn-secondary" onClick={() => setQuery('')}>검색 초기화</button>
+              ) : null}
+            </div>
+          ) : (
+            renderCards(filtered)
+          )}
+        </main>
+      )}
+
+      {tab === 'make' && (
+        <main className="tab-page">
+          {makeSummary.orderCount === 0 ? (
+            <div className="empty"><p className="empty-title">만들 제품이 없어요</p><p className="empty-hint">대기·제작중 주문이 모두 끝났어요.</p></div>
+          ) : (
+            <>
+              <section className="card-section">
+                <ProductionSummary
+                  orders={orders}
+                  products={products}
+                  filament={filament}
+                  selected={productFilter}
+                  onSelect={setProductFilter}
+                  embedded
+                />
+              </section>
+              <h2 className="section-title">
+                ✅ 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
+              </h2>
+              <div className="order-list">{renderCards(workOrders)}</div>
+            </>
+          )}
+        </main>
+      )}
+
+      {tab === 'filament' && (
+        <main className="tab-page embedded-panel">
+          <FilamentInventory
+            orders={orders}
+            products={products}
+            state={filament}
+            onChange={updateFilament}
+            onOpenProducts={() => setSheet('products')}
+            onClose={() => switchTab('make')}
+          />
+        </main>
+      )}
+
+      {tab === 'sales' && (
+        <main className="tab-page embedded-panel">
+          <SalesReport
+            filament={filament}
+            orders={orders}
+            products={products}
+            period={period}
+            onPeriod={setPeriod}
+            onTogglePaid={sharedCardProps.onTogglePaid}
+            onMarkPaid={(ids) => {
+              const now = Date.now();
+              for (const id of ids) updateOrder(id, { paid: true, paidAt: now });
+              showToast(`${ids.length}건 입금완료 처리`);
+            }}
+            onEdit={(o) => openEdit(o)}
+            onClose={() => switchTab('orders')}
+          />
+        </main>
+      )}
+
+      {tab === 'more' && (
+        <main className="tab-page">
+          <section className="card-section more-list">
+            {MORE_ITEMS.map((m) => (
+              <button key={m.id} type="button" className="more-row" onClick={() => setSheet(m.id)}>
+                <span className="more-ico" aria-hidden>{m.icon}</span>
+                <span className="more-text">
+                  <b>{m.label}</b>
+                  <small>{m.desc}</small>
+                </span>
+                <span className="more-caret" aria-hidden>›</span>
+              </button>
+            ))}
+          </section>
+          <p className="more-foot">링크는 그대로 · 새 버전은 앱을 완전히 닫았다 열면 적용돼요</p>
+        </main>
+      )}
+
+      {tab === 'orders' && (
+        <button type="button" className="fab" onClick={openNew} aria-label="새 주문 추가">＋</button>
+      )}
 
       {sheet !== 'none' && (
         <div className="sheet-backdrop" onClick={() => setSheet('none')}>

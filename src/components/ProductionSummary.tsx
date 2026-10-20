@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Order } from '../types';
 import { getProductColor, type Product } from '../products';
-import { buildProductionSummary, estimateDays, formatDuration, loadProductionSettings, pendingGrams, pendingMinutes } from '../production';
+import { pendingLoadByProduct, buildProductionSummary, estimateDays, formatDuration, loadProductionSettings, pendingGrams, pendingMinutes } from '../production';
 import { SETTINGS_APPLIED_EVENT } from '../settingsMeta';
 import { useEffect } from 'react';
 import { pendingByType, stockByType, swatchOf, thresholdOf, typeLabel, type FilamentState } from '../filament';
@@ -14,20 +14,25 @@ interface Props {
   filament?: FilamentState;
   selected: string | null;
   onSelect: (name: string | null) => void;
+  /** 제작 탭에 넣을 때: 항상 펼침 */
+  embedded?: boolean;
 }
 
-export function ProductionSummary({ orders, products, filament, selected, onSelect }: Props) {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
+export function ProductionSummary({ orders, products, filament, selected, onSelect, embedded }: Props) {
+  const [collapsedRaw, setCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === '1';
     } catch {
       return false;
     }
   });
+  const collapsed = embedded ? false : collapsedRaw;
+  const loads = useMemo(() => pendingLoadByProduct(orders, products), [orders, products]);
+  const odd = loads.filter((l) => l.suspicious);
   const summary = useMemo(() => buildProductionSummary(orders, products), [orders, products]);
 
   const toggle = () => {
-    const next = !collapsed;
+    const next = !collapsedRaw;
     setCollapsed(next);
     try {
       localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
@@ -69,18 +74,38 @@ export function ProductionSummary({ orders, products, filament, selected, onSele
 
   return (
     <section className="prod-summary">
-      <button type="button" className="prod-summary-head" onClick={toggle} aria-expanded={!collapsed}>
+      <button type="button" className="prod-summary-head" onClick={embedded ? undefined : toggle} aria-expanded={!collapsed}>
         <span className="prod-summary-title">🛠 만들 제품</span>
         <span className="prod-summary-meta">
           총 {summary.total}개 · 주문 {summary.orderCount}건
           {needG > 0 ? ` · 필라멘트 ${needG.toLocaleString('ko-KR')}g` : ''}
         </span>
-        <span className="prod-summary-caret">{collapsed ? '▼' : '▲'}</span>
+        {embedded ? null : <span className="prod-summary-caret">{collapsed ? '▼' : '▲'}</span>}
       </button>
       {!collapsed && needMin > 0 && (
         <div className="prod-time">
           ⏱ 총 출력 {formatDuration(needMin)} · 프린터 {prodSet.printers}대 × 하루 {prodSet.hoursPerDay}시간 기준 <b>약 {days}일</b>
         </div>
+      )}
+      {!collapsed && odd.length > 0 && (
+        <div className="prod-odd" role="alert">
+          ⚠️ 제품 관리 값 확인 필요 —{' '}
+          {odd.map((l) => `${l.name} 1개당 ${l.gramsPerUnit.toLocaleString('ko-KR')}g · ${formatDuration(l.minutesPerUnit)}`).join(', ')}
+          . 합계가 크게 나오는 원인이에요. 세트 전체 값이나 kg 를 g 로 넣은 건 아닌지 확인해 줘.
+        </div>
+      )}
+      {!collapsed && loads.length > 0 && (
+        <details className="prod-load">
+          <summary>제품별 필라멘트·시간 내역</summary>
+          <ul>
+            {loads.map((l) => (
+              <li key={l.name} className={l.suspicious ? 'odd' : ''}>
+                <span className="pl-name">{l.name} ×{l.qty}</span>
+                <span className="pl-num">{Math.round(l.grams).toLocaleString('ko-KR')}g · {formatDuration(l.minutes)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {selected && (
         <div className="prod-summary-filter">

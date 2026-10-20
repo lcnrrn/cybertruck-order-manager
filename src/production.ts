@@ -311,3 +311,59 @@ export function estimateDays(min: number, s: ProductionSettings): number {
   const perDay = Math.max(1, s.printers) * Math.max(0.5, s.hoursPerDay) * 60;
   return min > 0 ? Math.ceil((min / perDay) * 10) / 10 : 0;
 }
+
+/* ───────── 제품별 비중 · 이상값 점검 ───────── */
+
+/** 1개당 이 값을 넘으면 제품 관리 입력 실수(세트 총량·kg 혼동 등) 가능성이 높음 */
+export const SUSPICIOUS_GRAMS = 3000;
+export const SUSPICIOUS_MINUTES = 3000;
+
+export interface ProductLoad {
+  name: string;
+  qty: number;
+  gramsPerUnit: number;
+  minutesPerUnit: number;
+  grams: number;
+  minutes: number;
+  suspicious: boolean;
+}
+
+function catalogGramsPerUnit(p: Product | undefined): number {
+  if (!p) return 0;
+  if (p.filaments?.length) return p.filaments.reduce((s, f) => s + (Number.isFinite(f.grams) && f.grams > 0 ? f.grams : 0), 0);
+  return p.grams && p.grams > 0 ? p.grams : 0;
+}
+
+/** 남은 제작분 기준 제품별 필라멘트·출력 시간 (큰 순) — 합계가 왜 큰지 한눈에 */
+export function pendingLoadByProduct(orders: Order[], catalog: Product[]): ProductLoad[] {
+  const names = catalog.map((c) => c.name);
+  const m = new Map<string, ProductLoad>();
+  for (const o of orders) {
+    if (o.status !== '대기' && o.status !== '제작중') continue;
+    for (const p of parseOrderProducts(o.items, names).products) {
+      const q = remainingQty(o, p.name, p.qty);
+      if (q <= 0) continue;
+      const prod = catalog.find((c) => c.name === p.name);
+      const g = catalogGramsPerUnit(prod);
+      const mi = prod?.minutes || 0;
+      const row = m.get(p.name) ?? {
+        name: p.name, qty: 0, gramsPerUnit: g, minutesPerUnit: mi, grams: 0, minutes: 0,
+        suspicious: g > SUSPICIOUS_GRAMS || mi > SUSPICIOUS_MINUTES,
+      };
+      row.qty += q;
+      row.minutes += mi * q;
+      m.set(p.name, row);
+    }
+  }
+  // 실제 g 은 주문별 직접 지정값까지 반영한 orderGrams 로 다시 계산
+  for (const row of m.values()) {
+    row.grams = orders
+      .filter((o) => o.status === '대기' || o.status === '제작중')
+      .reduce((s, o) => {
+        const only = parseOrderProducts(o.items, names).products.find((x) => x.name === row.name);
+        if (!only) return s;
+        return s + orderGrams({ ...o, items: `${row.name} x${only.qty}` }, catalog, true);
+      }, 0);
+  }
+  return Array.from(m.values()).sort((a, b) => b.grams - a.grams || b.minutes - a.minutes);
+}
