@@ -119,4 +119,41 @@ use('A');
 await pullMergePush(T, A);
 assert.ok(!JSON.parse(localStorage.getItem(SETTING_LS_KEYS.products)!).some((x: { name: string }) => x.name === '견인고리 커버'));
 
+/* 7) 제작 체크(doneMap)·입금·단가: A 에서 바꾸면 updatedAt 이 올라가고 B 에 그대로 도착 */
+use('A');
+A = (await pullMergePush(T, A)).merged;
+A = A.map((o) => (o.id === 'o3' ? { ...o, doneMap: { '휴대폰 마운트 거치대': 1 }, status: '제작중', prices: { '휴대폰 마운트 거치대': 0 }, updatedAt: 9000 } : o));
+A = (await pullMergePush(T, A)).merged;
+use('B');
+B = (await pullMergePush(T, B)).merged;
+assert.deepEqual(byId(B).o3.doneMap, { '휴대폰 마운트 거치대': 1 }, '제작 체크가 B 에 도착해야 함');
+assert.deepEqual(byId(B).o3.prices, { '휴대폰 마운트 거치대': 0 });
+
+/* 8) 옛 버전 앱 흉내: A~K 열만, 다른 행 순서로 다시 씀 → L~R 열이 엉뚱한 행에 남음 */
+const sheet = tabs.get('Orders')!;
+const header = sheet[0];
+const body = sheet.slice(1);
+const reordered = [...body].reverse().map((r) => r.slice(0, 11));
+tabs.set('Orders', [header, ...reordered.map((r, i) => [...r, ...(body[i].slice(11))])]);
+// 다른 주문(o4)의 필라멘트 선택이 o3 자리에 붙는 상황 등
+use('A');
+A = (await pullMergePush(T, A)).merged;
+assert.deepEqual(byId(A).o3.doneMap, { '휴대폰 마운트 거치대': 1 }, '밀린 행 때문에 제작 체크가 지워지면 안 됨');
+assert.deepEqual(byId(A).o2.paid, true, '입금 표시 유지');
+assert.equal(byId(A).o1.doneMap, undefined, '다른 주문의 제작 체크가 붙으면 안 됨');
+// A 가 다시 올린 뒤 시트는 바르게 정렬돼 있어야 함 → B 도 정상
+use('B');
+B = (await pullMergePush(T, B)).merged;
+assert.deepEqual(byId(B).o3.doneMap, { '휴대폰 마운트 거치대': 1 });
+assert.equal(byId(B).o2.paid, true);
+assert.equal(byId(B).o1.doneMap, undefined);
+
+/* 9) 같은 updatedAt 인데 한쪽 행에 세부값이 빠져 있으면 지우지 않고 합침 */
+const { mergeByUpdatedAt } = await import('../src/google/sheets.ts');
+const l1 = [mk('z', 'z', 100, { doneMap: { a: 2 }, prices: { a: 0 } })];
+const r1 = [mk('z', 'z', 100, { status: '대기' })];
+assert.deepEqual(mergeByUpdatedAt(l1, r1)[0].doneMap, { a: 2 });
+// 시트 쪽이 더 새 수정이면 시트 값 (체크 해제도 전파)
+assert.equal(mergeByUpdatedAt(l1, [mk('z', 'z', 200)])[0].doneMap, undefined);
+
 console.log('two-device sync OK');

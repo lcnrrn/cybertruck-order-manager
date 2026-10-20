@@ -58,10 +58,16 @@ function orderToRow(o: Order): string[] {
     o.filamentUse || o.filamentPick
       ? JSON.stringify({ u: o.filamentUse, p: o.filamentPick })
       : '',
-    // R: 순번·부분 제작 — id를 함께 저장해 구버전 앱이 A:Q만 다시 써서 행이 밀려도 엉뚱한 주문에 붙지 않게
-    o.seq || (o.doneMap && Object.keys(o.doneMap).length) || (o.prices && Object.keys(o.prices).length) || (o.filamentGrams && Object.keys(o.filamentGrams).length)
-      ? JSON.stringify({ i: o.id, s: o.seq, d: o.doneMap, p: o.prices, g: o.filamentGrams })
-      : '',
+    // R: 항상 기록. id + L~Q 열 사본까지 넣어서, 옛 버전 앱이 A~K 만 다시 써서 L~R 열이 다른 행으로 밀려도
+    //    엉뚱한 주문에 붙지 않고(id 확인) 원래 값을 되살릴 수 있게 함
+    JSON.stringify({
+      i: o.id,
+      s: o.seq,
+      d: o.doneMap,
+      p: o.prices,
+      g: o.filamentGrams,
+      x: { a: o.amount, pd: o.paid ? 1 : undefined, pa: o.paidAt, fg: o.filamentG, fa: o.filamentAt, fu: o.filamentUse, fp: o.filamentPick },
+    }),
   ];
 }
 
@@ -70,13 +76,25 @@ function parseStatus(raw: string): OrderStatus {
   return '대기';
 }
 
-function rowToOrder(row: string[]): Order | null {
+/** R 열의 id. 비어 있으면 null */
+function progressId(raw: string | undefined): string | null {
+  const t = String(raw ?? '').trim();
+  if (!t) return null;
+  try {
+    const j = JSON.parse(t) as { i?: unknown };
+    return typeof j.i === 'string' ? j.i : '';
+  } catch {
+    return '';
+  }
+}
+
+function rowToOrder(row: string[], sheetMisaligned = false): Order | null {
   const id = (row[0] || '').trim();
   if (!id || id === 'id') return null;
   const updatedAt = Number(row[8]) || Date.now();
   const createdAt = Number(row[9]) || updatedAt;
   const tracking = (row[10] || '').trim();
-  return {
+  const base: Order = {
     id,
     name: row[1] || '이름없음',
     items: row[2] || '',
@@ -88,6 +106,14 @@ function rowToOrder(row: string[]): Order | null {
     updatedAt,
     createdAt,
     trackingNumber: tracking || undefined,
+  };
+  const rid = progressId(row[17]);
+  // R 열 id 가 다르거나(밀림), 시트에 밀린 행이 있는데 R 이 비어 있으면 L~R 열은 믿지 않음
+  if ((rid !== null && rid !== id) || (rid === null && sheetMisaligned)) {
+    return { ...base, _partial: true };
+  }
+  const out: Order = {
+    ...base,
     amount: optNum(row[11]),
     paid: String(row[12] || '').toLowerCase() === 'true' || undefined,
     paidAt: optNum(row[13]),
@@ -96,6 +122,28 @@ function rowToOrder(row: string[]): Order | null {
     ...parseFilamentCol(row[16]),
     ...parseProgressCol(row[17], id),
   };
+  // R 안의 L~Q 사본이 있으면 그걸 기준으로 (가장 정확)
+  try {
+    const x = rid === id ? (JSON.parse(row[17]) as { x?: Record<string, unknown> }).x : undefined;
+    if (x && typeof x === 'object') {
+      const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+      out.amount = n(x.a);
+      out.paid = x.pd ? true : undefined;
+      out.paidAt = n(x.pa);
+      out.filamentG = n(x.fg);
+      out.filamentAt = n(x.fa);
+      const fu = numMap(x.fu);
+      const fp = strMap(x.fp);
+      if (fu) out.filamentUse = fu;
+      else delete out.filamentUse;
+      if (fp) out.filamentPick = fp;
+      else delete out.filamentPick;
+    }
+  } catch {
+    /* ignore */
+  }
+  for (const k of Object.keys(out) as (keyof Order)[]) if (out[k] === undefined) delete out[k];
+  return out;
 }
 
 function parseFilamentCol(raw: string | undefined): Pick<Order, 'filamentUse' | 'filamentPick'> {
@@ -193,9 +241,15 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
   if (values.length === 0) return [];
 
   const start = values[0]?.[0] === 'id' ? 1 : 0;
+  const rows = values.slice(start).map((r) => r.map((c) => String(c ?? '')));
+  // 한 행이라도 R 열 id 가 자기 id 와 다르면, 옛 버전이 일부 열만 다시 써서 L~R 열이 밀린 시트
+  const misaligned = rows.some((r) => {
+    const rid = progressId(r[17]);
+    return rid !== null && rid !== (r[0] || '').trim();
+  });
   const orders: Order[] = [];
-  for (let i = start; i < values.length; i++) {
-    const order = rowToOrder(values[i].map((c) => String(c ?? '')));
+  for (const r of rows) {
+    const order = rowToOrder(r, misaligned);
     if (order) orders.push(order);
   }
   return orders;
@@ -205,7 +259,7 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
 export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:R`);
+  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:Z`);
 
   const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}:clear`, {
     method: 'POST',
@@ -229,17 +283,45 @@ export async function pushOrders(accessToken: string, orders: Order[]): Promise<
   }
 }
 
-/** Merge by id: keep the row with newer updatedAt. */
+/** 시트 L~R 열에 해당하는 주문 필드 */
+const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams'] as const;
+
+function stripPartial(o: Order): Order {
+  if (!o._partial) return o;
+  const r = { ...o };
+  delete r._partial;
+  return r;
+}
+
+/**
+ * 주문별 병합: updatedAt 이 더 큰 쪽.
+ * - 시각이 같으면 같은 수정이므로, 한쪽에만 있는 세부값(제작 체크·단가 등)은 지우지 않고 합침
+ * - 시트 행이 밀려서 세부값을 믿을 수 없으면(_partial) 세부값은 로컬 것 유지
+ */
 export function mergeByUpdatedAt(local: Order[], remote: Order[]): Order[] {
   const map = new Map<string, Order>();
   for (const o of local) map.set(o.id, o);
   for (const o of remote) {
     const existing = map.get(o.id);
-    if (!existing || o.updatedAt >= existing.updatedAt) {
-      map.set(o.id, o);
+    if (!existing) {
+      map.set(o.id, stripPartial(o));
+      continue;
     }
+    if (o.updatedAt < existing.updatedAt) continue;
+    const next: Order = stripPartial({ ...o });
+    const rec = next as unknown as Record<string, unknown>;
+    const ex = existing as unknown as Record<string, unknown>;
+    if (o._partial) {
+      for (const k of DETAIL_KEYS) {
+        if (ex[k] !== undefined) rec[k] = ex[k];
+        else delete rec[k];
+      }
+    } else if (o.updatedAt === existing.updatedAt) {
+      for (const k of DETAIL_KEYS) if (rec[k] === undefined && ex[k] !== undefined) rec[k] = ex[k];
+    }
+    map.set(o.id, next);
   }
-  return Array.from(map.values());
+  return Array.from(map.values()).map(stripPartial);
 }
 
 /**
@@ -256,11 +338,11 @@ function mergeOrdersRaw(local: Order[], remote: Order[]): Order[] {
   const localEmptyOrSample = local.length === 0 || isSampleOnly(local);
 
   if (localEmptyOrSample && remoteReal.length > 0) {
-    return remoteReal;
+    return remoteReal.map(stripPartial);
   }
 
   if (local.length === 0 && remote.length > 0) {
-    return remote;
+    return remote.map(stripPartial);
   }
 
   return mergeByUpdatedAt(local, remote);
