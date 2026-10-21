@@ -1434,3 +1434,9 @@ html, body { overflow-x: clip; }
 .epost-hist { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 8px; overflow-wrap: anywhere; }
 .epost-hist ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
 .more-badge { flex: none; background: #c62828; color: #fff; border-radius: 999px; font-size: 12px; font-weight: 700; padding: 2px 8px; }
+
+.badge-already {
+  background: rgba(100, 116, 139, 0.18);
+  color: #cbd5e1;
+  border: 1px solid rgba(100, 116, 139, 0.45);
+}
