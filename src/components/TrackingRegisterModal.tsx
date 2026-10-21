@@ -42,14 +42,16 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
     let matched = 0;
     let ambiguous = 0;
     let unmatched = 0;
+    let already = 0;
     let ready = 0;
     for (const row of preview) {
       if (row.kind === 'matched') matched += 1;
       else if (row.kind === 'ambiguous') ambiguous += 1;
+      else if (row.kind === 'already') already += 1;
       else unmatched += 1;
       if (row.selectedOrderId) ready += 1;
     }
-    return { matched, ambiguous, unmatched, ready };
+    return { matched, ambiguous, unmatched, already, ready };
   }, [preview]);
 
   function setSelection(trackingNumber: string, orderId: string | null) {
@@ -77,7 +79,7 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
       });
     }
     if (updates.length === 0) {
-      window.alert('적용할 매칭이 없습니다. 일치 항목을 선택해 주세요.');
+      window.alert(counts.already ? '모두 이미 등록된 송장이에요. 바꿀 게 없어요.' : '적용할 매칭이 없습니다. 일치 항목을 선택해 주세요.');
       return;
     }
     onApply(updates);
@@ -116,6 +118,7 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
           <strong>
             미리보기 {preview.length}건 · 일치 {counts.matched} · 모호{' '}
             {counts.ambiguous} · 미매칭 {counts.unmatched}
+            {counts.already ? ` · 이미 등록 ${counts.already}` : ''}
           </strong>
           <ul className="tracking-preview-list">
             {preview.map((row) => {
@@ -137,9 +140,15 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
                         ? '일치'
                         : row.kind === 'ambiguous'
                           ? '모호'
-                          : '미매칭'}
+                          : row.kind === 'already'
+                            ? '이미 등록'
+                            : '미매칭'}
                     </span>
                   </div>
+
+                  {row.kind === 'already' && row.candidates[0] && (
+                    <p className="tracking-match-line muted">→ {row.candidates[0].name} · {row.candidates[0].status} (이미 이 송장이 들어가 있어요 · 건너뜀)</p>
+                  )}
 
                   {row.kind === 'matched' && selected && (
                     <p className="tracking-match-line">
@@ -190,7 +199,11 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
                         <option value="">— 선택 —</option>
                         {(row.kind === 'ambiguous'
                           ? row.candidates
-                          : orders
+                          : [...orders].sort(
+                              (a, b) =>
+                                Number(a.status === '완료') - Number(b.status === '완료') ||
+                                (b.updatedAt || 0) - (a.updatedAt || 0),
+                            )
                         ).map((o) => (
                           <option key={o.id} value={o.id}>
                             {o.name}

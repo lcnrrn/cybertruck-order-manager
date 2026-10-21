@@ -68,4 +68,13 @@ const expect = ['오종진:matched:1', '김영기:matched:2', '김동건:matched
 if (JSON.stringify(got) !== JSON.stringify(expect)) { console.error('FAIL', expect); process.exit(1); }
 const old = matchTrackingRows(parseTrackingReceipt('6892013747044  4,000  44429  임*욱\n소포 3000g/80cm 생활용품'), [mk('9', '임동욱', '')]);
 if (old[0].kind !== 'matched' || old[0].trackingNumber !== '6892013747044') { console.error('FAIL masked', old); process.exit(1); }
+// 이미 시트에 송장이 들어간 7건(완료) → 전부 「이미 등록」
+const T: Record<string, string> = { '오종진 아원': '6892015240450', 김영기: '6892015240451', '김동건 6': '6892015240452', '유형곤  제이제이': '6892015240453', 한정열: '6892015240454', 이형로: '6892015240455', 김승겸: '6892015240456' };
+const done = Object.entries(T).map(([n, tn], i): Order => ({ ...mk('d' + i, n, ''), status: n === '김동건 6' ? '제작중' : '완료', trackingNumber: tn, shipments: [{ ...reg('x' + i)[0], trackingNumber: tn }] }));
+const paste7 = Object.entries(T).map(([n, tn]) => `받는분\n${n.split(' ')[0]}\n등기번호\n${tn} (https://service.epost.go.kr/x)\n주소\n어딘가\n예상금액\n4,000원\n- 재신청`).join('\n');
+const a = matchTrackingRows(parseTrackingReceipt(paste7), [...done, mk('z', '정재훈', '')]);
+if (a.length !== 7 || a.some((x) => x.kind !== 'already')) { console.error('FAIL already', a.map((x) => x.kind)); process.exit(1); }
+// 완료 주문 + 송장 비어 있음 → 이름으로 자동 매칭
+const c = matchTrackingRows(parseTrackingReceipt(paste7), Object.keys(T).map((n, i): Order => ({ ...mk('e' + i, n, ''), status: '완료' })));
+if (c.some((x, i) => x.kind !== 'matched' || x.selectedOrderId !== 'e' + i)) { console.error('FAIL done-empty', c.map((x) => x.kind)); process.exit(1); }
 console.log('tracking paste OK');

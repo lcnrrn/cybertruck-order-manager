@@ -170,7 +170,7 @@ export function nameMatchesReceipt(orderName: string, receiptName: string): bool
   return true;
 }
 
-export type MatchKind = 'matched' | 'ambiguous' | 'unmatched';
+export type MatchKind = 'matched' | 'ambiguous' | 'unmatched' | 'already';
 
 export type TrackingMatchPreview = {
   trackingNumber: string;
@@ -207,19 +207,26 @@ export function matchTrackingRows(
     candidates,
     selectedOrderId: kind === 'matched' ? candidates[0].id : null,
   });
+  const tnOf = (o: Order) => [o.trackingNumber, ...(o.shipments || []).map((x) => x.trackingNumber)].filter(Boolean) as string[];
+  const rank = (o: Order) => (hasFreeRegistered(o) ? 0 : !tnOf(o).length && o.status !== '완료' ? 1 : !tnOf(o).length ? 2 : 3);
   return rows.map((row) => {
     const hint = row.recipientHint;
+    // 0) 이 등기번호가 이미 어떤 주문/발송건에 있으면 「이미 등록」
+    const owner = orders.find((o) => tnOf(o).includes(row.trackingNumber));
+    if (owner) return { ...res(row, 'already', [owner]), selectedOrderId: null };
     if (hint && !hint.includes('*') && row.fullName !== false) {
       // 1) 전체 이름: 송장 없는 접수 완료 발송건이 있는 주문 우선
       const byName = orders.filter((o) => nameMatchesFull(o.name, hint));
       const free = byName.filter(hasFreeRegistered);
-      const pool = free.length ? free : byName;
-      if (pool.length === 1) return res(row, 'matched', pool);
+      const open = byName.filter((o) => !tnOf(o).length);
+      const pool = free.length ? free : open.length ? open : byName.slice().sort((a, b) => rank(a) - rank(b));
+      if (pool.length === 1 && (free.length || open.length)) return res(row, 'matched', pool);
+      if (pool.length === 1) return res(row, 'ambiguous', pool); // 이미 다른 송장 있음 → 사용자가 확인
       // 2) 동명이인/미매칭: 주소·전화로 좁히기
       const scoreOf = (o: Order) =>
         (row.address ? addressSimilarity(row.address, o.address) : 0) +
         (row.phone && o.phone && row.phone.slice(-8) === o.phone.replace(/\D/g, '').slice(-8) ? 1 : 0);
-      const base = pool.length ? pool : orders.filter((o) => o.status !== '완료' || hasFreeRegistered(o));
+      const base = pool.length ? pool : orders.filter((o) => !tnOf(o).length || hasFreeRegistered(o));
       const scored = base.map((o) => ({ o, sc: scoreOf(o) })).filter((x) => x.sc >= 0.6).sort((a, b) => b.sc - a.sc);
       if (scored.length === 1 || (scored.length > 1 && scored[0].sc - scored[1].sc >= 0.3)) {
         return res(row, 'matched', [scored[0].o, ...scored.slice(1).map((x) => x.o)]);
@@ -229,10 +236,9 @@ export function matchTrackingRows(
       return res(row, 'unmatched', []);
     }
     if (!hint) return res(row, 'unmatched', []);
-    const candidates = orders
-      .filter((o) => nameMatchesReceipt(o.name, hint))
-      .slice()
-      .sort(preferUnshipped);
+    const all = orders.filter((o) => nameMatchesReceipt(o.name, hint));
+    const fresh = all.filter((o) => hasFreeRegistered(o) || !tnOf(o).length);
+    const candidates = (fresh.length ? fresh : all).slice().sort(preferUnshipped);
     if (candidates.length === 0) return res(row, 'unmatched', []);
     if (candidates.length === 1) return res(row, 'matched', candidates);
     return res(row, 'ambiguous', candidates);
