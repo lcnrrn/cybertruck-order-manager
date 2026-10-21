@@ -21,7 +21,20 @@ export default defineConfig({
     versionFile,
     VitePWA({
       registerType: 'autoUpdate',
-      workbox: { skipWaiting: true, clientsClaim: true, cleanupOutdatedCaches: true, navigateFallbackDenylist: [/version\.json/] },
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+        // index.html 은 미리 저장(precache)하지 않음 → 옛 화면이 캐시에서 뜨는 일 없음
+        globPatterns: ['**/*.{js,css,png,svg,ico,webmanifest}'],
+        navigateFallback: null,
+        runtimeCaching: [
+          // 화면(HTML): 항상 네트워크 먼저, 오프라인일 때만 저장본
+          { urlPattern: ({ request }) => request.mode === 'navigate', handler: 'NetworkFirst', options: { cacheName: 'html', networkTimeoutSeconds: 5 } },
+          // 버전 파일: 절대 캐시 안 씀
+          { urlPattern: /version\.json/, handler: 'NetworkOnly' },
+        ],
+      },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: '사이버트럭 주문 관리',

@@ -1440,3 +1440,18 @@ html, body { overflow-x: clip; }
   color: #cbd5e1;
   border: 1px solid rgba(100, 116, 139, 0.45);
 }
+
+/* 새로고침 · 업데이트 */
+.refresh-btn { margin-left: auto; white-space: nowrap; }
+.update-banner {
+  position: sticky; top: 0; z-index: 60; width: 100%; border: 0; cursor: pointer;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px; font-size: 14px; font-weight: 700;
+  background: #2563eb; color: #fff; text-align: center;
+}
+.ptr-indicator {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 70; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-end; padding-bottom: 6px; pointer-events: none;
+  color: var(--text-muted, #94a3b8); background: linear-gradient(to bottom, rgba(11, 13, 16, 0.95), rgba(11, 13, 16, 0));
+}
+.ptr-indicator span { font-size: 22px; line-height: 1; }
+.ptr-indicator small { font-size: 12px; margin-top: 2px; }
