@@ -57,17 +57,20 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
   }
 
   function handleApply() {
-    const used = new Set<string>();
+    const used = new Map<string, number>();
     const updates: { orderId: string; trackingNumber: string }[] = [];
     for (const row of preview) {
       if (!row.selectedOrderId) continue;
-      if (used.has(row.selectedOrderId)) {
+      const o = orders.find((x) => x.id === row.selectedOrderId);
+      const slots = Math.max(1, (o?.shipments || []).filter((x) => x.postStatus !== 'cancelled' && !x.trackingNumber).length);
+      const n = (used.get(row.selectedOrderId) || 0) + 1;
+      if (n > slots) {
         window.alert(
           `같은 주문에 송장이 중복 배정되었습니다. 「${row.recipientHint || row.trackingNumber}」를 확인해 주세요.`,
         );
         return;
       }
-      used.add(row.selectedOrderId);
+      used.set(row.selectedOrderId, n);
       updates.push({
         orderId: row.selectedOrderId,
         trackingNumber: row.trackingNumber,
@@ -88,6 +91,8 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
         주문에 연결합니다.
         <br />
         마스킹 이름(예: 임*욱)은 첫·끝 글자와 글자 수로 매칭합니다.
+        <br />
+        인터넷우체국 「접수내역」(받는분 · 등기번호 · 주소)을 그대로 붙여넣어도 되고, 송장은 접수 완료된 1차·2차 발송건에 차례로 붙습니다.
       </p>
 
       <label className="field">

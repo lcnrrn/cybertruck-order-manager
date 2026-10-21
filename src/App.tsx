@@ -32,6 +32,7 @@ import { FilamentInventory } from './components/FilamentInventory';
 import { loadFilament, saveFilament, type FilamentState } from './filament';
 import { SETTINGS_APPLIED_EVENT } from './settingsMeta';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
+import { hasFreeRegistered } from './parseTrackingReceipt';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
 import { EpostPanel } from './components/EpostPanel';
@@ -848,7 +849,7 @@ export default function App() {
             )}
             {sheet === 'tracking' && (
               <TrackingRegisterModal
-                orders={orders.filter((o) => o.status !== '완료')}
+                orders={orders.filter((o) => o.status !== '완료' || hasFreeRegistered(o))}
                 onApply={(updates) => {
                   const names = products.map((p) => p.name);
                   for (const u of updates) {

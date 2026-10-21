@@ -3,6 +3,11 @@ import type { Order } from './types';
 export type ParsedTrackingRow = {
   trackingNumber: string;
   recipientHint: string;
+  /** 접수내역 형식에서 읽은 주소 (없으면 undefined) */
+  address?: string;
+  phone?: string;
+  /** true = 마스킹 없는 전체 이름 (접수내역 형식) */
+  fullName?: boolean;
 };
 
 const TRACKING_RE = /(\d{13})/g;
@@ -43,6 +48,8 @@ function looksLikeKoreanName(token: string): boolean {
  * 같은 줄의 13자리 숫자 + 근처 한글(마스킹 포함) 이름을 묶습니다.
  */
 export function parseTrackingReceipt(text: string): ParsedTrackingRow[] {
+  const blocks = parseEpostHistory(text);
+  if (blocks.length) return blocks;
   const rows: ParsedTrackingRow[] = [];
   const seen = new Set<string>();
   const lines = text.split(/\r?\n/);
@@ -78,6 +85,74 @@ export function parseTrackingReceipt(text: string): ParsedTrackingRow[] {
   }
 
   return rows;
+}
+
+const LABELS = /^(받는\s*분|받는\s*사람|수취인|등기\s*번호|운송장\s*번호|주소|받는\s*분\s*주소|연락처|전화\s*번호|휴대폰|예상\s*금액|요금|접수\s*번호|중량|내용물|상태)\s*[:：]?\s*(.*)$/;
+
+/**
+ * 인터넷우체국 모바일 「접수내역」 붙여넣기:
+ *   받는분 / 오종진 / 등기번호 / 6892015240450 (https://...) / 주소 / 서울... / ... / 예상금액 / 4,000원 / - 재신청
+ * 라벨 다음 줄(또는 같은 줄 ':' 뒤)이 값. 블록은 '받는분' 이 다시 나오거나 '재신청' 줄에서 끝남.
+ */
+export function parseEpostHistory(text: string): ParsedTrackingRow[] {
+  if (!/받는\s*분|수취인/.test(text) || !/등기\s*번호|운송장/.test(text)) return [];
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const out: ParsedTrackingRow[] = [];
+  const seen = new Set<string>();
+  let cur: { name?: string; tn?: string; addr?: string; phone?: string } = {};
+  const flush = () => {
+    if (cur.tn && !seen.has(cur.tn)) {
+      seen.add(cur.tn);
+      out.push({ trackingNumber: cur.tn, recipientHint: cur.name || '', address: cur.addr, phone: cur.phone, fullName: Boolean(cur.name && !cur.name.includes('*')) });
+    }
+    cur = {};
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^-?\s*재신청/.test(line)) { flush(); continue; }
+    const m = LABELS.exec(line);
+    if (!m) continue;
+    const label = m[1].replace(/\s/g, '');
+    let val = m[2].trim();
+    if (!val && i + 1 < lines.length && !LABELS.test(lines[i + 1])) val = lines[++i];
+    if (label === '받는분' || label === '받는사람' || label === '수취인') {
+      if (cur.tn) flush();
+      const nm = (val.match(/[가-힣*]{2,}/) || [''])[0];
+      cur.name = nm;
+    } else if (label === '등기번호' || label === '운송장번호') {
+      const tn = val.replace(/[\s-]/g, '').match(/\d{13}/);
+      if (tn) cur.tn = tn[0];
+    } else if (label === '주소' || label === '받는분주소') {
+      cur.addr = val;
+    } else if (label === '연락처' || label === '전화번호' || label === '휴대폰') {
+      cur.phone = val.replace(/\D/g, '');
+    }
+  }
+  flush();
+  return out;
+}
+
+function normAddr(s: string): string {
+  return s.replace(/특별시|광역시|특별자치시|특별자치도|[()\s,.-]/g, '').replace(/^서울시?/, '서울').replace(/^경기도/, '경기');
+}
+
+/** 주소 유사도 0~1 (공통 토큰 비율) */
+export function addressSimilarity(a: string, b: string): number {
+  const tok = (s: string) => new Set(s.split(/[\s,()]+/).map(normAddr).filter((t) => t.length >= 2));
+  const A = tok(a);
+  const B = tok(b);
+  if (!A.size || !B.size) return 0;
+  let n = 0;
+  for (const t of A) if (B.has(t)) n += 1;
+  return n / Math.min(A.size, B.size);
+}
+
+/** 전체 이름 ↔ 주문 이름 ('오종진' ↔ '오종진 아원', '제이제이 유형곤') */
+export function nameMatchesFull(orderName: string, name: string): boolean {
+  const o = orderName.replace(/\s+/g, ' ').trim();
+  const n = name.trim();
+  if (!o || !n || n.length < 2) return false;
+  return o === n || o.startsWith(n) || o.split(' ').includes(n) || o.includes(n);
 }
 
 /** 마스킹 이름 `임*욱` ↔ 주문 이름 매칭 (길이·첫·끝 글자) */
@@ -117,53 +192,49 @@ function preferUnshipped(a: Order, b: Order): number {
   return rank(a.status) - rank(b.status);
 }
 
+export function hasFreeRegistered(o: Order): boolean {
+  return (o.shipments || []).some((x) => x.postStatus === 'registered' && !x.trackingNumber);
+}
+
 export function matchTrackingRows(
   rows: ParsedTrackingRow[],
   orders: Order[],
 ): TrackingMatchPreview[] {
+  const res = (row: ParsedTrackingRow, kind: MatchKind, candidates: Order[]): TrackingMatchPreview => ({
+    trackingNumber: row.trackingNumber,
+    recipientHint: row.recipientHint,
+    kind,
+    candidates,
+    selectedOrderId: kind === 'matched' ? candidates[0].id : null,
+  });
   return rows.map((row) => {
     const hint = row.recipientHint;
-    if (!hint) {
-      return {
-        trackingNumber: row.trackingNumber,
-        recipientHint: hint,
-        kind: 'unmatched' as const,
-        candidates: [],
-        selectedOrderId: null,
-      };
+    if (hint && !hint.includes('*') && row.fullName !== false) {
+      // 1) 전체 이름: 송장 없는 접수 완료 발송건이 있는 주문 우선
+      const byName = orders.filter((o) => nameMatchesFull(o.name, hint));
+      const free = byName.filter(hasFreeRegistered);
+      const pool = free.length ? free : byName;
+      if (pool.length === 1) return res(row, 'matched', pool);
+      // 2) 동명이인/미매칭: 주소·전화로 좁히기
+      const scoreOf = (o: Order) =>
+        (row.address ? addressSimilarity(row.address, o.address) : 0) +
+        (row.phone && o.phone && row.phone.slice(-8) === o.phone.replace(/\D/g, '').slice(-8) ? 1 : 0);
+      const base = pool.length ? pool : orders.filter((o) => o.status !== '완료' || hasFreeRegistered(o));
+      const scored = base.map((o) => ({ o, sc: scoreOf(o) })).filter((x) => x.sc >= 0.6).sort((a, b) => b.sc - a.sc);
+      if (scored.length === 1 || (scored.length > 1 && scored[0].sc - scored[1].sc >= 0.3)) {
+        return res(row, 'matched', [scored[0].o, ...scored.slice(1).map((x) => x.o)]);
+      }
+      if (scored.length > 1) return res(row, 'ambiguous', scored.map((x) => x.o));
+      if (pool.length > 1) return res(row, 'ambiguous', pool.slice().sort(preferUnshipped));
+      return res(row, 'unmatched', []);
     }
-
+    if (!hint) return res(row, 'unmatched', []);
     const candidates = orders
       .filter((o) => nameMatchesReceipt(o.name, hint))
       .slice()
       .sort(preferUnshipped);
-
-    if (candidates.length === 0) {
-      return {
-        trackingNumber: row.trackingNumber,
-        recipientHint: hint,
-        kind: 'unmatched' as const,
-        candidates: [],
-        selectedOrderId: null,
-      };
-    }
-
-    if (candidates.length === 1) {
-      return {
-        trackingNumber: row.trackingNumber,
-        recipientHint: hint,
-        kind: 'matched' as const,
-        candidates,
-        selectedOrderId: candidates[0].id,
-      };
-    }
-
-    return {
-      trackingNumber: row.trackingNumber,
-      recipientHint: hint,
-      kind: 'ambiguous' as const,
-      candidates,
-      selectedOrderId: null,
-    };
+    if (candidates.length === 0) return res(row, 'unmatched', []);
+    if (candidates.length === 1) return res(row, 'matched', candidates);
+    return res(row, 'ambiguous', candidates);
   });
 }
