@@ -546,6 +546,7 @@ export default function App() {
           onDisconnect={google.disconnect}
           onOpenSettings={() => setSheet('google')}
           dirty={google.dirty}
+          dirtySince={google.dirtySince}
           lastSyncAt={google.lastSyncAt}
           lastError={google.lastError}
           outdated={google.outdated}

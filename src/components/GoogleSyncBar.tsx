@@ -10,6 +10,7 @@ interface Props {
   onDisconnect: () => void;
   onOpenSettings: () => void;
   dirty?: boolean;
+  dirtySince?: number;
   lastSyncAt?: number;
   lastError?: string | null;
   outdated?: boolean;
@@ -24,8 +25,8 @@ function hm(ms: number): string {
 }
 
 /** 한 줄 저장 상태: 초록 '저장됨 · 오전 8:20' / 빨강 '저장 안 됨 — 탭해서 다시 연결' */
-export function SaveStatus({ connected, needsLogin, status, dirty, lastSyncAt, lastError, outdated, onSync }: {
-  connected: boolean; needsLogin?: boolean; status: SyncStatus; dirty?: boolean; lastSyncAt?: number; lastError?: string | null; outdated?: boolean; onSync: () => void;
+export function SaveStatus({ connected, needsLogin, status, dirty, dirtySince, lastSyncAt, lastError, outdated, onSync }: {
+  connected: boolean; needsLogin?: boolean; status: SyncStatus; dirty?: boolean; dirtySince?: number; lastSyncAt?: number; lastError?: string | null; outdated?: boolean; onSync: () => void;
 }) {
   let tone = 'ok';
   let text: string;
@@ -41,6 +42,9 @@ export function SaveStatus({ connected, needsLogin, status, dirty, lastSyncAt, l
   } else if (status === 'error') {
     tone = 'bad';
     text = `저장 안 됨 — ${lastError || '오류'} · 탭해서 다시 시도`;
+  } else if (dirty && dirtySince && Date.now() - dirtySince > 90_000) {
+    tone = 'bad';
+    text = `저장 안 됨 — ${hm(dirtySince)}부터 고친 내용이 이 기기에만 있어요 · 탭해서 저장`;
   } else if (dirty) {
     tone = 'busy';
     text = '저장 대기 중…';
@@ -67,6 +71,7 @@ export function GoogleSyncBar({
   onDisconnect,
   onOpenSettings,
   dirty,
+  dirtySince,
   lastSyncAt,
   lastError,
   outdated,
@@ -75,7 +80,7 @@ export function GoogleSyncBar({
 
   return (
     <div className="google-sync-bar-wrap">
-      <SaveStatus connected={connected} needsLogin={needsLogin} status={status} dirty={dirty} lastSyncAt={lastSyncAt} lastError={lastError} outdated={outdated} onSync={onSync} />
+      <SaveStatus connected={connected} needsLogin={needsLogin} status={status} dirty={dirty} dirtySince={dirtySince} lastSyncAt={lastSyncAt} lastError={lastError} outdated={outdated} onSync={onSync} />
       <div className="google-sync-bar">
         {!connected && needsLogin ? (
           <button type="button" className="btn btn-secondary google-connect-btn" onClick={onSync} disabled={busy}>

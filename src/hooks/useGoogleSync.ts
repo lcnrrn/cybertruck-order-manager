@@ -142,6 +142,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
    * 한 번의 동기화 = (1) 설정 받기·합치기·올리기 (2) 주문 최신본 받기 → 항목별 최신 updatedAt 병합 → 다르면 올리기.
    * 항상 먼저 받아서 합친 뒤 쓰므로, 옛 데이터가 더 새 데이터를 덮을 수 없음. 동시에 한 개만 실행(줄 세움).
    */
+  const inflightRef = useRef<Promise<unknown>>(Promise.resolve());
   const syncOnce = useCallback(
     (reason: 'open' | 'edit' | 'poll' | 'manual', toastMsg?: string): Promise<boolean> => {
       const run = async (): Promise<boolean> => {
@@ -168,10 +169,14 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
         const startedDirty = lsNum(LS_DIRTY);
         if (reason !== 'poll') setStatus('syncing');
         try {
+          // 시간 초과로 끊긴 지난 회차가 아직 시트에 쓰는 중이면 끝날 때까지 기다림 (동시에 두 번 쓰지 않게)
+          await inflightRef.current.catch(() => undefined);
           const local = ordersRef.current;
           let timer = 0;
+          const work = pullMergePush(token, local);
+          inflightRef.current = work;
           const { merged, remoteCount } = await Promise.race([
-            pullMergePush(token, local),
+            work,
             new Promise<never>((_, rej) => {
               timer = window.setTimeout(() => rej(new Error('응답이 너무 늦어요 (시간 초과)')), GATE_TIMEOUT_MS);
             }),
@@ -550,6 +555,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     lastError,
     configured,
     dirty: dirtySince > 0,
+    dirtySince,
     lastSyncAt,
     outdated,
     refreshConfigured,
