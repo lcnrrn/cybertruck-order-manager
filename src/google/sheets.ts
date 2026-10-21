@@ -1,3 +1,4 @@
+import { BUILD_ID } from '../appVersion';
 import { mergeShipments, parseShipments } from '../shipments';
 import { numMap, strMap } from '../storage';
 import type { Order, OrderStatus } from '../types';
@@ -256,16 +257,39 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
   const start = values[0]?.[0] === 'id' ? 1 : 0;
   const rows = values.slice(start).map((r) => r.map((c) => String(c ?? '')));
   // 한 행이라도 R 열 id 가 자기 id 와 다르면, 옛 버전이 일부 열만 다시 써서 L~R 열이 밀린 시트
-  const misaligned = rows.some((r) => {
+  const fixed = realignRows(rows);
+  const misaligned = fixed.some((r) => {
     const rid = progressId(r[17]);
     return rid !== null && rid !== (r[0] || '').trim();
   });
   const orders: Order[] = [];
-  for (const r of rows) {
+  for (const r of fixed) {
     const order = rowToOrder(r, misaligned);
     if (order) orders.push(order);
   }
   return orders;
+}
+
+/**
+ * 옛 버전 앱이 A~K 열만 자기 순서로 다시 쓰면 L~R 열이 다른 주문 행에 남음(밀림).
+ * R 열 JSON 에 주문 id 가 있으니, id 로 L~R 을 제 주인 행에 다시 붙임 → 입금·체크·발송이 사라지지 않음.
+ */
+export function realignRows(rows: string[][]): string[][] {
+  const owner = new Map<string, string[]>();
+  for (const r of rows) {
+    const rid = progressId(r[17]);
+    if (rid) owner.set(rid, r);
+  }
+  return rows.map((r) => {
+    const id = (r[0] || '').trim();
+    if (!id || progressId(r[17]) === id) return r;
+    const src = owner.get(id);
+    if (!src) return r; // 이 주문의 R 이 시트에 없음 → rowToOrder 가 partial 처리(로컬 세부값 유지)
+    const out = r.slice(0, 11);
+    while (out.length < 11) out.push('');
+    for (let i = 11; i <= 17; i++) out.push(src[i] ?? '');
+    return out;
+  });
 }
 
 /** Replace entire Orders sheet with header + rows (source of truth write-through). */
@@ -288,8 +312,15 @@ export async function pushOrders(accessToken: string, orders: Order[]): Promise<
   }
   const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values:batchClear`, {
     method: 'POST',
-    body: JSON.stringify({ ranges: [`${ORDERS_SHEET_NAME}!A${values.length + 1}:Z`, `${ORDERS_SHEET_NAME}!S1:Z${values.length}`] }),
+    body: JSON.stringify({ ranges: [`${ORDERS_SHEET_NAME}!A${values.length + 1}:Z`, `${ORDERS_SHEET_NAME}!T1:Z${values.length}`, `${ORDERS_SHEET_NAME}!S2:S${values.length}`] }),
   });
+  // S1: 마지막으로 탭 전체를 쓴 기기·빌드 (문제 생기면 누가 썼는지 확인용)
+  try {
+    const who = JSON.stringify({ at: Date.now(), build: BUILD_ID, ua: navigator.userAgent.slice(0, 120), n: orders.length, paid: orders.filter((o) => o.paid).length, done: orders.filter((o) => o.doneMap).length });
+    await sheetsFetch(accessToken, `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!S1`)}?valueInputOption=RAW`, { method: 'PUT', body: JSON.stringify({ values: [[who]] }) });
+  } catch {
+    /* ignore */
+  }
   if (!clearRes.ok) {
     throw new Error(`시트 정리 실패: ${await readError(clearRes)}`);
   }
