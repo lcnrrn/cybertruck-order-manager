@@ -22,6 +22,10 @@ const DEBOUNCE_MS = 1200;
 const POLL_MS = 45000;
 
 export type SyncStatus = 'idle' | 'connecting' | 'syncing' | 'error';
+/** 시작 화면 가림막: loading=불러오는 중, login=탭 필요, offline, error, none=사용 가능 */
+export type GateState = 'none' | 'loading' | 'login' | 'offline' | 'error';
+const GATE_TIMEOUT_MS = 20000;
+const BACKGROUND_REGATE_MS = 60000;
 
 interface Options {
   orders: Order[];
@@ -61,6 +65,34 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
   const [dirtySince, setDirtySince] = useState<number>(() => lsNum(LS_DIRTY));
   const [lastSyncAt, setLastSyncAt] = useState<number>(() => lsNum(LS_LAST_SYNC));
   const [outdated, setOutdated] = useState(false);
+  /** 시트와 맞춘 뒤에만 true — false 면 수정 잠금 */
+  const usesSheet = (() => {
+    try {
+      return localStorage.getItem(LS_SIGNED) === '1' && hasGoogleConfig();
+    } catch {
+      return false;
+    }
+  })();
+  const [synced, setSynced] = useState<boolean>(!usesSheet);
+  const [gate, setGateState] = useState<GateState>(usesSheet ? (navigator.onLine ? 'loading' : 'offline') : 'none');
+  const gateRef = useRef<GateState>(gate);
+  const setGate = useCallback((g: GateState) => {
+    gateRef.current = g;
+    setGateState(g);
+  }, []);
+  const syncedRef = useRef(synced);
+  const setSyncedBoth = useCallback((v: boolean) => {
+    syncedRef.current = v;
+    setSynced(v);
+  }, []);
+  /** 가림막/읽기 전용 상태에서 실패 이유 반영 */
+  const gateFail = useCallback(
+    (kind: 'login' | 'offline' | 'error') => {
+      if (syncedRef.current) return;
+      if (gateRef.current !== 'none') setGate(kind);
+    },
+    [setGate],
+  );
 
   const ordersRef = useRef(orders);
   const tokenRef = useRef<string | null>(null);
@@ -116,11 +148,13 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
         const token = tokenRef.current;
         if (!token) {
           if (lsNum(LS_DIRTY)) setNeedsLogin(true);
+          gateFail('login');
           return false;
         }
         if (!navigator.onLine) {
           setLastError('오프라인 — 연결되면 자동 저장');
           setStatus('error');
+          gateFail('offline');
           return false;
         }
         if (await checkOutdated()) {
@@ -128,13 +162,20 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
           setOutdated(true);
           setLastError('옛 버전 앱 — 새 버전으로 새로고침 중');
           setStatus('error');
+          gateFail('error');
           return false;
         }
         const startedDirty = lsNum(LS_DIRTY);
         if (reason !== 'poll') setStatus('syncing');
         try {
           const local = ordersRef.current;
-          const { merged, remoteCount } = await pullMergePush(token, local);
+          let timer = 0;
+          const { merged, remoteCount } = await Promise.race([
+            pullMergePush(token, local),
+            new Promise<never>((_, rej) => {
+              timer = window.setTimeout(() => rej(new Error('응답이 너무 늦어요 (시간 초과)')), GATE_TIMEOUT_MS);
+            }),
+          ]).finally(() => window.clearTimeout(timer));
           lastRemoteCountRef.current = remoteCount;
           const mergedFp = ordersFingerprint(merged);
           if (mergedFp !== ordersFingerprint(ordersRef.current)) {
@@ -156,13 +197,18 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
           setLastSyncAt(now);
           setLastError(null);
           setStatus('idle');
+          setSyncedBoth(true);
+          readOnlyRef.current = false;
+          setGate('none');
           if (toastMsg) onToastRef.current?.(toastMsg);
           return true;
         } catch (e) {
           const msg = e instanceof Error ? e.message : '동기화 실패';
           if (isAuthError(msg)) {
             dropToken('구글 로그인 만료 — 탭해서 다시 연결');
+            gateFail('login');
           } else {
+            gateFail(navigator.onLine ? 'error' : 'offline');
             setLastError(msg);
             setStatus('error');
             if (reason !== 'poll') onToastRef.current?.(`저장 실패: ${msg}`);
@@ -174,7 +220,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       queueRef.current = p.catch(() => undefined);
       return p;
     },
-    [dropToken],
+    [dropToken, gateFail, setGate, setSyncedBoth],
   );
 
   // 로컬 주문이 바뀔 때마다: 시트 기준과 다르면 '저장 안 됨' 표시 + 잠시 후 자동 저장
@@ -244,6 +290,41 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     };
   }, [accessToken, syncOnce, dropToken]);
 
+  // 백그라운드에 1분 넘게 있다가 돌아오면: 다시 최신 내용부터 받고 나서 수정 허용
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (!hiddenAt || Date.now() - hiddenAt < BACKGROUND_REGATE_MS) return;
+      hiddenAt = 0;
+      if (!isSigned() || !hasGoogleConfig()) return;
+      setSyncedBoth(false);
+      if (!navigator.onLine) return setGate('offline');
+      if (!tokenRef.current || !getStoredToken()) return setGate('login');
+      setGate('loading');
+      void syncOnce('open');
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncOnce, setGate, setSyncedBoth]);
+
+  // 오프라인 → 온라인: 가림막 중이면 다시 시도
+  useEffect(() => {
+    const on = () => {
+      if (syncedRef.current) return;
+      if (tokenRef.current) {
+        if (gateRef.current !== 'none') setGate('loading');
+        void syncOnce('open');
+      } else if (gateRef.current === 'offline') setGate('login');
+    };
+    window.addEventListener('online', on);
+    return () => window.removeEventListener('online', on);
+  }, [syncOnce, setGate]);
+
   // 페이지를 닫기 직전 남은 저장 시도
   useEffect(() => {
     const onHide = () => {
@@ -291,6 +372,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
   );
 
   const reconnectingRef = useRef(false);
+  const readOnlyRef = useRef(false);
 
   const connect = useCallback(async () => {
     if (!getClientId() || !getSheetId()) {
@@ -350,13 +432,14 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
         setLastError(msg);
         setStatus('error');
         onToastRef.current?.(msg);
+        gateFail('login');
       } finally {
         reconnectingRef.current = false;
       }
       return;
     }
     await syncOnce('manual', '동기화 완료');
-  }, [adoptToken, syncOnce]);
+  }, [adoptToken, syncOnce, gateFail]);
 
   function isSigned() {
     try {
@@ -371,6 +454,16 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     let cancelled = false;
     async function tryRestore() {
       if (!isSigned() || !hasGoogleConfig() || tokenRef.current) return;
+      if (!navigator.onLine) {
+        setGate('offline');
+        void loadGisScript().catch(() => undefined);
+        const st = getStoredToken();
+        if (st) {
+          setAccessToken(st);
+          tokenRef.current = st;
+        }
+        return;
+      }
       void loadGisScript().catch(() => undefined);
       const stored = getStoredToken();
       if (stored) {
@@ -387,6 +480,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       if (!cancelled) {
         setStatus('idle');
         setNeedsLogin(true);
+        if (!syncedRef.current) setGate(navigator.onLine ? 'login' : 'offline');
       }
     }
     void tryRestore();
@@ -399,7 +493,9 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
   // 토큰 만료 상태: 화면 아무 곳이나 처음 탭할 때 자동 재연결 (iOS 는 탭 안에서만 팝업 허용)
   useEffect(() => {
     if (!needsLogin || accessToken) return;
-    const onTap = () => {
+    const onTap = (ev: MouseEvent) => {
+      // '읽기 전용으로 보기'를 고른 경우엔 아무 탭으로 팝업을 띄우지 않음 (배너/버튼으로만)
+      if (readOnlyRef.current || (ev.target as HTMLElement | null)?.closest?.('.gate-ro')) return;
       if (reconnectingRef.current || tokenRef.current || !isSigned() || !hasGoogleConfig()) return;
       reconnectingRef.current = true;
       setStatus('connecting');
@@ -411,7 +507,10 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       }
       requestAccessToken({ prompt: '', hint })
         .then((t) => adoptToken(t, '다시 연결됨 · 저장 완료'))
-        .catch(() => setStatus('error'))
+        .catch(() => {
+          setStatus('error');
+          gateFail('login');
+        })
         .finally(() => {
           reconnectingRef.current = false;
         });
@@ -421,7 +520,29 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needsLogin, accessToken, adoptToken]);
 
+  /** 가림막의 큰 버튼: 토큰 있으면 다시 받기, 없으면 구글 팝업(탭 안에서) */
+  const retryGate = useCallback(() => {
+    if (!navigator.onLine) {
+      setGate('offline');
+      onToastRef.current?.('인터넷 연결이 없어요');
+      return;
+    }
+    setGate('loading');
+    if (tokenRef.current && getStoredToken()) void syncOnce('open');
+    else void syncNow();
+  }, [setGate, syncOnce, syncNow]);
+
+  /** 읽기 전용으로 보기: 가림막만 닫고 수정은 계속 잠금 */
+  const viewReadOnly = useCallback(() => {
+    readOnlyRef.current = true;
+    setGate('none');
+  }, [setGate]);
+
   return {
+    gate,
+    locked: !synced,
+    retryGate,
+    viewReadOnly,
     connected: Boolean(accessToken),
     needsLogin,
     email,

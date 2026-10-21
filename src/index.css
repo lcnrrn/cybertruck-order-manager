@@ -1377,3 +1377,20 @@ html, body { overflow-x: clip; }
 .save-status.busy i { background: var(--warn); }
 .save-status.bad { border-color: #b91c1c; background: rgba(127, 29, 29, 0.45); color: #fecaca; font-weight: 600; cursor: pointer; }
 .save-status.bad i { background: var(--danger); }
+
+/* 시작 동기화 가림막 */
+.sync-gate { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 24px 16px calc(24px + var(--safe-bottom)); background: rgba(11, 13, 16, 0.92); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.sync-gate.gate-loading { background: rgba(11, 13, 16, 0.6); animation: gate-in 0.2s ease 0.3s both; }
+.sync-gate.gate-loading .sync-gate-card { animation: gate-in 0.2s ease 0.3s both; }
+@keyframes gate-in { from { opacity: 0; } to { opacity: 1; } }
+.sync-gate-card { width: 100%; max-width: 360px; min-width: 0; padding: 22px 18px; border-radius: 18px; border: 1px solid var(--border); background: var(--bg-elevated); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.gate-title { margin: 0; font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.gate-hint { margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+.gate-ico { font-size: 34px; }
+.gate-main { width: 100%; min-height: 52px; font-size: 16px; margin-top: 6px; }
+.gate-ro { font-size: 13px; color: var(--text-muted); text-decoration: underline; padding: 6px; background: none; border: none; }
+.gate-spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent-strong); animation: gate-spin 0.8s linear infinite; }
+@keyframes gate-spin { to { transform: rotate(360deg); } }
+.locked-banner { display: block; width: 100%; margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid #b45309; background: rgba(120, 53, 15, 0.45); color: #fde68a; font-size: 13px; text-align: left; overflow-wrap: anywhere; }
+.is-locked [data-lock-zone] :is(button, input, select, textarea, label) { opacity: 0.55; }
+.is-locked .fab { opacity: 0.4; }

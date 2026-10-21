@@ -33,6 +33,7 @@ import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
 import { BackupPanel } from './components/BackupPanel';
+import { LockedBanner, SyncGate } from './components/SyncGate';
 
 type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup';
 
@@ -132,13 +133,35 @@ export default function App() {
   const {
     orders,
     replaceOrders,
-    addOrder,
-    updateOrder,
-    deleteOrder,
-    setStatus,
-    importOrders,
-    setItemDone,
+    addOrder: rawAddOrder,
+    updateOrder: rawUpdateOrder,
+    deleteOrder: rawDeleteOrder,
+    setStatus: rawSetStatus,
+    importOrders: rawImportOrders,
+    setItemDone: rawSetItemDone,
   } = useOrders(products);
+  // 최신 내용을 받기 전(잠금)에는 모든 수정 차단
+  const lockedRef = useRef(false);
+  const lockToastRef = useRef<(m: string) => void>(() => undefined);
+  const blocked = () => {
+    if (!lockedRef.current) return false;
+    lockToastRef.current('🔒 최신 내용을 받은 뒤에 수정할 수 있어요');
+    return true;
+  };
+  const addOrder: typeof rawAddOrder = (d) => (blocked() ? (undefined as unknown as ReturnType<typeof rawAddOrder>) : rawAddOrder(d));
+  const updateOrder: typeof rawUpdateOrder = (id, patch) => {
+    if (!blocked()) rawUpdateOrder(id, patch);
+  };
+  const deleteOrder: typeof rawDeleteOrder = (id) => {
+    if (!blocked()) rawDeleteOrder(id);
+  };
+  const setStatus: typeof rawSetStatus = (id, st) => {
+    if (!blocked()) rawSetStatus(id, st);
+  };
+  const importOrders: typeof rawImportOrders = (list) => (blocked() ? 0 : rawImportOrders(list));
+  const setItemDone: typeof rawSetItemDone = (id, k, c) => {
+    if (!blocked()) rawSetItemDone(id, k, c);
+  };
   const [filter, setFilter] = useState<StatusFilter>(loadStatusFilter);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('전체');
   const [period, setPeriod] = useState<PeriodRange>(loadPeriodFilter);
@@ -212,11 +235,13 @@ export default function App() {
   const showToast = useCallback((msg: string) => setToast(msg), []);
 
   const handleSourcesChange = useCallback((next: string[]) => {
+    if (blocked()) return;
     setSources(next);
     setSourcesState(next);
   }, []);
 
   const handleProductsChange = useCallback((next: Product[]) => {
+    if (blocked()) return;
     setProducts(next);
     setProductsState(next);
   }, []);
@@ -226,6 +251,26 @@ export default function App() {
     replaceOrders,
     onToast: showToast,
   });
+
+  lockedRef.current = google.locked;
+  lockToastRef.current = showToast;
+  // 잠금 중엔 수정용 시트(폼·제품 관리 등)를 열지 않음
+  useEffect(() => {
+    if (google.locked && !['none', 'google', 'backup', 'menu'].includes(sheet)) {
+      setSheet('none');
+      showToast('🔒 최신 내용을 받은 뒤에 수정할 수 있어요');
+    }
+  }, [google.locked, sheet, showToast]);
+  const onLockCapture = (e: React.SyntheticEvent) => {
+    if (!google.locked) return;
+    const t = e.target as HTMLElement;
+    if (!t.closest('[data-lock-zone]')) return;
+    if (t.closest('[data-allow-locked], .prod-chip, summary, .period-filter, .prod-summary-filter')) return;
+    if (!t.closest('button, input, select, textarea, label, a, [role="button"], [role="checkbox"]')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showToast('🔒 최신 내용을 받은 뒤에 수정할 수 있어요');
+  };
 
   const baseFiltered = useFilteredOrders(orders, filter, sourceFilter, query, period, products);
   const [productFilter, setProductFilter] = useState<string | null>(null);
@@ -253,6 +298,7 @@ export default function App() {
 
   const [filament, setFilamentState] = useState<FilamentState>(() => loadFilament());
   const updateFilament = useCallback((next: FilamentState) => {
+    if (blocked()) return;
     saveFilament(next);
     setFilamentState(next);
   }, []);
@@ -431,7 +477,8 @@ export default function App() {
     list.map((o) => <OrderCard key={o.id} order={o} products={products} {...sharedCardProps} />);
 
   return (
-    <div className={`app view-card tabbed tab-${tab}`}>
+    <div className={`app view-card tabbed tab-${tab}${google.locked ? ' is-locked' : ''}`} onClickCapture={onLockCapture} onChangeCapture={onLockCapture}>
+      <SyncGate gate={google.gate} error={google.lastError} onRetry={google.retryGate} onReadOnly={google.viewReadOnly} />
       <nav className="tabbar" aria-label="화면 전환">
         <div className="tabbar-brand">
           <span className="eyebrow">Cybertruck · 3D Print</span>
@@ -513,6 +560,8 @@ export default function App() {
         ) : null}
       </div>
 
+      {google.locked && google.gate === 'none' ? <LockedBanner onSync={google.retryGate} /> : null}
+
       {stats.length > 0 ? (
         <div className="stat-cards">
           {stats.map((x) => (
@@ -525,7 +574,7 @@ export default function App() {
       ) : null}
 
       {tab === 'orders' && (
-        <main className="order-list">
+        <main className="order-list" data-lock-zone>
           {filtered.length === 0 ? (
             <div className="empty">
               <p className="empty-title">{empty.title}</p>
@@ -545,7 +594,7 @@ export default function App() {
       )}
 
       {tab === 'make' && (
-        <main className="tab-page">
+        <main className="tab-page" data-lock-zone>
           {makeSummary.orderCount === 0 ? (
             <div className="empty"><p className="empty-title">만들 제품이 없어요</p><p className="empty-hint">대기·제작중 주문이 모두 끝났어요.</p></div>
           ) : (
@@ -570,7 +619,7 @@ export default function App() {
       )}
 
       {tab === 'filament' && (
-        <main className="tab-page embedded-panel">
+        <main className="tab-page embedded-panel" data-lock-zone>
           <FilamentInventory
             orders={orders}
             products={products}
@@ -583,7 +632,7 @@ export default function App() {
       )}
 
       {tab === 'sales' && (
-        <main className="tab-page embedded-panel">
+        <main className="tab-page embedded-panel" data-lock-zone>
           <SalesReport
             filament={filament}
             orders={orders}
@@ -603,10 +652,10 @@ export default function App() {
       )}
 
       {tab === 'more' && (
-        <main className="tab-page">
+        <main className="tab-page" data-lock-zone>
           <section className="card-section more-list">
             {MORE_ITEMS.map((m) => (
-              <button key={m.id} type="button" className="more-row" onClick={() => setSheet(m.id)}>
+              <button key={m.id} type="button" className="more-row" data-allow-locked={m.id === 'google' || m.id === 'backup' ? '' : undefined} onClick={() => setSheet(m.id)}>
                 <span className="more-ico" aria-hidden>{m.icon}</span>
                 <span className="more-text">
                   <b>{m.label}</b>
@@ -621,7 +670,7 @@ export default function App() {
       )}
 
       {tab === 'orders' && (
-        <button type="button" className="fab" onClick={openNew} aria-label="새 주문 추가">＋</button>
+        <button type="button" className="fab" data-lock-zone onClick={openNew} aria-label="새 주문 추가">＋</button>
       )}
 
       {sheet !== 'none' && (
