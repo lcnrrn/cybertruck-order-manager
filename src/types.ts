@@ -57,6 +57,8 @@ export interface Order {
   updatedAt: number;
   /** (동기화 중에만) 시트 행의 L~R 열이 다른 주문 것으로 밀려 있어 믿을 수 없음 — 저장 안 됨 */
   _partial?: true;
+  /** 시트 R 열이 옛 형식(v 없음) — 빈 세부값은 '모름' */
+  _legacy?: true;
 }
 
 /** 작업중 = 대기 + 제작중 (기본 작업 큐) */

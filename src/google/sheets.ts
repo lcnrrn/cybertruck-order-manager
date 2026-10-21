@@ -63,6 +63,7 @@ export function orderToRow(o: Order): string[] {
     //    엉뚱한 주문에 붙지 않고(id 확인) 원래 값을 되살릴 수 있게 함
     JSON.stringify({
       i: o.id,
+      v: 2, // v2: 이 행의 세부값(제작 체크 등)은 완전한 값 — 비어 있으면 진짜 비어 있음
       s: o.seq,
       d: o.doneMap,
       p: o.prices,
@@ -110,9 +111,16 @@ export function rowToOrder(row: string[], sheetMisaligned = false): Order | null
     trackingNumber: tracking || undefined,
   };
   const rid = progressId(row[17]);
-  // R 열 id 가 다르거나(밀림), 시트에 밀린 행이 있는데 R 이 비어 있으면 L~R 열은 믿지 않음
-  if ((rid !== null && rid !== id) || (rid === null && sheetMisaligned)) {
+  // R 열 id 가 다르거나(밀림), R 이 비어 있으면(옛 버전 앱이 A~K 만 씀) L~R 열은 믿지 않음 → 로컬 세부값 유지
+  void sheetMisaligned;
+  if (rid !== id) {
     return { ...base, _partial: true };
+  }
+  let legacy = false;
+  try {
+    legacy = (JSON.parse(row[17]) as { v?: unknown }).v !== 2;
+  } catch {
+    legacy = true;
   }
   const out: Order = {
     ...base,
@@ -145,6 +153,7 @@ export function rowToOrder(row: string[], sheetMisaligned = false): Order | null
     /* ignore */
   }
   for (const k of Object.keys(out) as (keyof Order)[]) if (out[k] === undefined) delete out[k];
+  if (legacy) out._legacy = true;
   return out;
 }
 
@@ -263,20 +272,12 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
 export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
-  const range = encodeURIComponent(`${ORDERS_SHEET_NAME}!A:Z`);
 
-  const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values/${range}:clear`, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  });
-  if (!clearRes.ok) {
-    throw new Error(`시트 비우기 실패: ${await readError(clearRes)}`);
-  }
-
+  // 먼저 덮어쓰고(빈 시트가 보이는 순간 없음) 그다음 남는 아래 행·오른쪽 열만 지움
   const values = [[...ORDERS_HEADERS], ...orders.map(orderToRow)];
   const updateRes = await sheetsFetch(
     accessToken,
-    `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!A1`)}?valueInputOption=RAW`,
+    `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!A1:R${values.length}`)}?valueInputOption=RAW`,
     {
       method: 'PUT',
       body: JSON.stringify({ values }),
@@ -285,15 +286,23 @@ export async function pushOrders(accessToken: string, orders: Order[]): Promise<
   if (!updateRes.ok) {
     throw new Error(`시트 쓰기 실패: ${await readError(updateRes)}`);
   }
+  const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values:batchClear`, {
+    method: 'POST',
+    body: JSON.stringify({ ranges: [`${ORDERS_SHEET_NAME}!A${values.length + 1}:Z`, `${ORDERS_SHEET_NAME}!S1:Z${values.length}`] }),
+  });
+  if (!clearRes.ok) {
+    throw new Error(`시트 정리 실패: ${await readError(clearRes)}`);
+  }
 }
 
 /** 시트 L~R 열에 해당하는 주문 필드 */
 const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
 
 function stripPartial(o: Order): Order {
-  if (!o._partial) return o;
+  if (!o._partial && !o._legacy) return o;
   const r = { ...o };
   delete r._partial;
+  delete r._legacy;
   return r;
 }
 
@@ -327,6 +336,7 @@ export function mergeByUpdatedAt(local: Order[], remote: Order[]): Order[] {
         else delete rec[k];
       }
     } else if (o.updatedAt === existing.updatedAt) {
+      // 같은 수정 시각: 시트에 빠진 세부값(제작 체크·단가 등)은 이 기기 값으로 채움 (더 옛 값으로는 채우지 않음)
       for (const k of DETAIL_KEYS) if (rec[k] === undefined && ex[k] !== undefined) rec[k] = ex[k];
     }
     if (!o._partial) {
