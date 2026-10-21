@@ -124,7 +124,7 @@ export function GoogleSyncBar({
       </div>
       {!connected && needsLogin ? (
         <p className="google-backup-hint">
-          구글 로그인 시간이 지나서 잠시 멈췄어요. 화면 아무 곳이나 한 번 누르면 자동으로 다시 이어져요 (주문은 그대로 사용 가능).
+          구글 로그인 시간이 지나서 잠시 멈췄어요. 위 버튼을 누르면 최신 내용을 받고 수정할 수 있어요.
         </p>
       ) : !connected ? (
         <p className="google-backup-hint">
