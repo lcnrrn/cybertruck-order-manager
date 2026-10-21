@@ -1,3 +1,4 @@
+import { mergeShipments, parseShipments } from '../shipments';
 import { numMap, strMap } from '../storage';
 import type { Order, OrderStatus } from '../types';
 import { isSampleOrderId, isSampleOnly } from '../storage';
@@ -37,7 +38,7 @@ async function readError(res: Response): Promise<string> {
   }
 }
 
-function orderToRow(o: Order): string[] {
+export function orderToRow(o: Order): string[] {
   return [
     o.id,
     o.name,
@@ -66,6 +67,7 @@ function orderToRow(o: Order): string[] {
       d: o.doneMap,
       p: o.prices,
       g: o.filamentGrams,
+      sh: o.shipments?.length ? o.shipments : undefined,
       x: { a: o.amount, pd: o.paid ? 1 : undefined, pa: o.paidAt, fg: o.filamentG, fa: o.filamentAt, fu: o.filamentUse, fp: o.filamentPick },
     }),
   ];
@@ -88,7 +90,7 @@ function progressId(raw: string | undefined): string | null {
   }
 }
 
-function rowToOrder(row: string[], sheetMisaligned = false): Order | null {
+export function rowToOrder(row: string[], sheetMisaligned = false): Order | null {
   const id = (row[0] || '').trim();
   if (!id || id === 'id') return null;
   const updatedAt = Number(row[8]) || Date.now();
@@ -162,13 +164,13 @@ function parseFilamentCol(raw: string | undefined): Pick<Order, 'filamentUse' | 
   }
 }
 
-function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams'> {
+function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams' | 'shipments'> {
   const t = String(raw ?? '').trim();
   if (!t) return {};
   try {
-    const j = JSON.parse(t) as { i?: unknown; s?: unknown; d?: unknown; p?: unknown; g?: unknown };
+    const j = JSON.parse(t) as { i?: unknown; s?: unknown; d?: unknown; p?: unknown; g?: unknown; sh?: unknown };
     if (j.i !== id) return {};
-    const out: Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams'> = {};
+    const out: Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams' | 'shipments'> = {};
     if (typeof j.s === 'number' && j.s > 0) out.seq = j.s;
     const d = numMap(j.d);
     if (d) out.doneMap = d;
@@ -176,6 +178,8 @@ function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq
     if (pr) out.prices = pr;
     const g = numMap(j.g);
     if (g) out.filamentGrams = g;
+    const sh = parseShipments(j.sh);
+    if (sh) out.shipments = sh;
     return out;
   } catch {
     return {};
@@ -284,7 +288,7 @@ export async function pushOrders(accessToken: string, orders: Order[]): Promise<
 }
 
 /** 시트 L~R 열에 해당하는 주문 필드 */
-const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams'] as const;
+const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
 
 function stripPartial(o: Order): Order {
   if (!o._partial) return o;
@@ -307,7 +311,13 @@ export function mergeByUpdatedAt(local: Order[], remote: Order[]): Order[] {
       map.set(o.id, stripPartial(o));
       continue;
     }
-    if (o.updatedAt < existing.updatedAt) continue;
+    if (o.updatedAt < existing.updatedAt) {
+      if (!o._partial && o.shipments?.length) {
+        const sh = mergeShipments(existing.shipments, o.shipments);
+        if (JSON.stringify(sh) !== JSON.stringify(existing.shipments)) map.set(o.id, { ...existing, shipments: sh });
+      }
+      continue;
+    }
     const next: Order = stripPartial({ ...o });
     const rec = next as unknown as Record<string, unknown>;
     const ex = existing as unknown as Record<string, unknown>;
@@ -318,6 +328,10 @@ export function mergeByUpdatedAt(local: Order[], remote: Order[]): Order[] {
       }
     } else if (o.updatedAt === existing.updatedAt) {
       for (const k of DETAIL_KEYS) if (rec[k] === undefined && ex[k] !== undefined) rec[k] = ex[k];
+    }
+    if (!o._partial) {
+      const sh = mergeShipments(next.shipments, existing.shipments);
+      if (sh) next.shipments = sh;
     }
     map.set(o.id, next);
   }

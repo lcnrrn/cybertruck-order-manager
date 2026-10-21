@@ -1,3 +1,4 @@
+import { parseShipments } from './shipments';
 import type { Order, OrderStatus } from './types';
 import { STORAGE_KEY } from './types';
 import { SAMPLE_ORDERS } from './sampleData';
@@ -52,6 +53,7 @@ export function normalizeOrder(raw: unknown): Order | null {
     doneMap: numMap(o.doneMap),
     prices: numMap(o.prices),
     filamentGrams: numMap(o.filamentGrams),
+    shipments: parseShipments(o.shipments),
     createdAt,
     updatedAt,
   };

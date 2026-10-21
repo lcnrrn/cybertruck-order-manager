@@ -1,3 +1,20 @@
+/** requested: 전송 대기, registered: 우체국 접수 완료(재전송 불가), cancelled: 요청 취소(동기화용 기록) */
+export type PostStatus = 'requested' | 'registered' | 'cancelled';
+
+export interface Shipment {
+  id: string;
+  /** 1차, 2차 … */
+  no: number;
+  /** {제품명: 수량} */
+  items: Record<string, number>;
+  postStatus: PostStatus;
+  requestedAt: number;
+  registeredAt?: number;
+  receiptNo?: string;
+  trackingNumber?: string;
+  updatedAt: number;
+}
+
 export type OrderStatus = '대기' | '제작중' | '완료';
 
 export interface Order {
@@ -34,6 +51,8 @@ export interface Order {
   prices?: Record<string, number>;
   /** 이 주문만의 필라멘트 사용량 직접 지정 {'제품명#순번': 그 줄 총 g(수량 전체)} */
   filamentGrams?: Record<string, number>;
+  /** 우체국 전송(분할 발송) 목록 — 1차/2차 … 각각 송장 따로 */
+  shipments?: Shipment[];
   createdAt: number;
   updatedAt: number;
   /** (동기화 중에만) 시트 행의 L~R 열이 다른 주문 것으로 밀려 있어 믿을 수 없음 — 저장 안 됨 */
