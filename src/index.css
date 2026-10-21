@@ -1414,3 +1414,23 @@ html, body { overflow-x: clip; }
 .ship-cancel { min-width: 32px; min-height: 32px; flex: none; }
 .post-chip { display: inline-flex; align-items: center; margin: 0 0 10px; padding: 6px 12px; border-radius: 999px; border: 1px solid #fdba74; background: rgba(251,146,60,0.1); color: inherit; font-weight: 700; font-size: 0.88rem; cursor: pointer; }
 .post-chip.on { background: #c2410c; color: #fff; border-color: #c2410c; }
+
+/* 우체국 접수 */
+.epost, .epost * { min-width: 0; }
+.epost { overflow-x: hidden; }
+.epost-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 12px; word-break: keep-all; overflow-wrap: anywhere; }
+.epost-status small { width: 100%; color: var(--text-muted); font-size: 12px; }
+.epost-status.st-done { border-color: #2e7d32; }
+.epost-status.st-error { border-color: #c62828; }
+.epost-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.epost-row { display: flex; gap: 8px; align-items: flex-start; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elevated); }
+.epost-main { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.epost-main small { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.epost-main .epost-items { color: inherit; }
+.epost-no { font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.epost-x { flex: none; }
+.epost-go { width: 100%; min-height: 52px; font-size: 17px; margin: 4px 0 16px; }
+.epost-confirm { padding: 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; background: var(--bg-elevated); }
+.epost-hist { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 8px; overflow-wrap: anywhere; }
+.epost-hist ul { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.more-badge { flex: none; background: #c62828; color: #fff; border-radius: 999px; font-size: 12px; font-weight: 700; padding: 2px 8px; }

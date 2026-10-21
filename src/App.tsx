@@ -34,10 +34,12 @@ import { SETTINGS_APPLIED_EVENT } from './settingsMeta';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
+import { EpostPanel } from './components/EpostPanel';
+import { loadEpostRequest, type EpostRequest } from './epost';
 import { BackupPanel } from './components/BackupPanel';
 import { LockedBanner, SyncGate } from './components/SyncGate';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup';
+type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost';
 
 const MENU_ITEMS: { id: Sheet; icon: string; label: string }[] = [
   { id: 'import', icon: '📥', label: '가져오기' },
@@ -61,6 +63,7 @@ const TABS: { id: Tab; icon: string; label: string; title: string }[] = [
   { id: 'more', icon: '⚙️', label: '더보기', title: '더보기 · 설정' },
 ];
 const MORE_ITEMS: { id: Sheet; icon: string; label: string; desc: string }[] = [
+  { id: 'epost', icon: '📮', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
   { id: 'products', icon: '📦', label: '제품 관리', desc: '판매가 · 필라멘트 g · 출력 시간' },
   { id: 'sources', icon: '🧭', label: '경로 관리', desc: '주문 경로(카페·클럽) 목록' },
   { id: 'sms', icon: '💬', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
@@ -303,6 +306,7 @@ export default function App() {
     return c;
   }, [orders, products]);
 
+  const [epostReq, setEpostReq] = useState<EpostRequest | null>(() => loadEpostRequest());
   const [filament, setFilamentState] = useState<FilamentState>(() => loadFilament());
   const updateFilament = useCallback((next: FilamentState) => {
     if (blocked()) return;
@@ -316,6 +320,7 @@ export default function App() {
       setProductsState(getProducts());
       setSourcesState(getSources());
       setFilamentState(loadFilament());
+      setEpostReq(loadEpostRequest());
     };
     window.addEventListener(SETTINGS_APPLIED_EVENT, onApplied);
     return () => window.removeEventListener(SETTINGS_APPLIED_EVENT, onApplied);
@@ -513,6 +518,7 @@ export default function App() {
             <span className="tabbar-ico" aria-hidden>{t.icon}</span>
             <span className="tabbar-label">{t.label}</span>
             {t.id === 'orders' && counts.작업중 > 0 ? <span className="tabbar-badge">{counts.작업중}</span> : null}
+            {t.id === 'more' && postPending > 0 ? <span className="tabbar-badge">{postPending}</span> : null}
           </button>
         ))}
       </nav>
@@ -630,6 +636,9 @@ export default function App() {
               <h2 className="section-title">
                 ✅ 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
               </h2>
+              {postPending > 0 ? (
+                <button type="button" className="btn btn-secondary" style={{ width: '100%', marginBottom: 8 }} onClick={() => setSheet('epost')}>📮 우체국 접수하러 가기 ({postPending}건)</button>
+              ) : null}
               {postPending > 0 || postOnly ? (
                 <button
                   type="button"
@@ -689,6 +698,7 @@ export default function App() {
                   <b>{m.label}</b>
                   <small>{m.desc}</small>
                 </span>
+                {m.id === 'epost' && postPending > 0 ? <span className="more-badge">{postPending}</span> : null}
                 <span className="more-caret" aria-hidden>›</span>
               </button>
             ))}
@@ -724,6 +734,20 @@ export default function App() {
                   <button type="button" className="btn btn-ghost" onClick={() => setSheet('none')}>닫기</button>
                 </div>
               </div>
+            )}
+            {sheet === 'epost' && (
+              <EpostPanel
+                orders={orders}
+                request={epostReq}
+                onRequest={(r) => {
+                  if (blocked()) return;
+                  setEpostReq(r);
+                  showToast('📮 접수 요청 저장됨 · 15분 안에 처리돼요');
+                  void google.syncNow();
+                }}
+                onCancelShip={(id, shipId) => sharedCardProps.onCancelShip(id, shipId)}
+                onClose={() => setSheet('none')}
+              />
             )}
             {sheet === 'backup' && (
               <BackupPanel
