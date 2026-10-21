@@ -90,17 +90,36 @@ async function pullRemote(token: string, id: string): Promise<Map<SettingKey, En
   return out;
 }
 
-async function pushRemote(token: string, id: string, map: Map<SettingKey, Entry>, stamps: ItemStamps): Promise<void> {
-  const range = encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:C`);
-  await check(await req(token, `${id}/values/${range}:clear`, { method: 'POST', body: '{}' }), '설정 비우기 실패');
-  const values = [HEADERS, ...KEYS.filter((k) => map.has(k)).map((k) => [k, map.get(k)!.json, String(map.get(k)!.updatedAt)]), [STAMPS_ROW, JSON.stringify(stamps), String(Date.now())]];
-  await check(
-    await req(token, `${id}/values/${encodeURIComponent(`${SETTINGS_SHEET_NAME}!A1`)}?valueInputOption=RAW`, {
-      method: 'PUT',
-      body: JSON.stringify({ values }),
-    }),
-    '설정 쓰기 실패',
-  );
+/** 바뀐 키 행만 씀 (A 열 key 로 행을 찾고, 없으면 아래에 추가). 탭 전체를 지우지 않음 */
+async function pushRemote(token: string, id: string, map: Map<SettingKey, Entry>, stamps: ItemStamps, keys: string[]): Promise<void> {
+  const range = encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:A`);
+  const res = await check(await req(token, `${id}/values/${range}`), '설정 읽기 실패');
+  const vals = ((await res.json()) as { values?: string[][] }).values || [];
+  const rowOf = new Map<string, number>();
+  vals.forEach((r, i) => {
+    const k = String(r?.[0] ?? '').trim();
+    if (k && !rowOf.has(k)) rowOf.set(k, i + 1);
+  });
+  const rowFor = (k: string): string[] =>
+    k === STAMPS_ROW ? [STAMPS_ROW, JSON.stringify(stamps), String(Date.now())] : [k, map.get(k as SettingKey)!.json, String(map.get(k as SettingKey)!.updatedAt)];
+  const data: { range: string; values: string[][] }[] = [];
+  const append: string[][] = [];
+  if (!vals.length) data.push({ range: `${SETTINGS_SHEET_NAME}!A1:C1`, values: [HEADERS] });
+  for (const k of keys) {
+    if (k !== STAMPS_ROW && !map.has(k as SettingKey)) continue;
+    const n = rowOf.get(k);
+    if (n) data.push({ range: `${SETTINGS_SHEET_NAME}!A${n}:C${n}`, values: [rowFor(k)] });
+    else append.push(rowFor(k));
+  }
+  if (data.length) {
+    await check(await req(token, `${id}/values:batchUpdate`, { method: 'POST', body: JSON.stringify({ valueInputOption: 'RAW', data }) }), '설정 쓰기 실패');
+  }
+  if (append.length) {
+    await check(
+      await req(token, `${id}/values/${encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:C`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, { method: 'POST', body: JSON.stringify({ values: append }) }),
+      '설정 추가 실패',
+    );
+  }
 }
 
 function readLocal(key: SettingKey): Entry | null {
@@ -205,6 +224,7 @@ async function syncSettingsOnce(token: string): Promise<boolean> {
   const merged = new Map<SettingKey, Entry>();
   let localChanged = false;
   let remoteChanged = false;
+  const changedKeys: string[] = [];
 
   for (const key of KEYS) {
     const l = readLocal(key);
@@ -239,12 +259,18 @@ async function syncSettingsOnce(token: string): Promise<boolean> {
     } else if (l.updatedAt !== m.updatedAt) {
       setSettingMeta(key, m.updatedAt);
     }
-    if (!r || r.json !== m.json || r.updatedAt !== m.updatedAt) remoteChanged = true;
+    if (!r || r.json !== m.json || r.updatedAt !== m.updatedAt) {
+      remoteChanged = true;
+      changedKeys.push(key);
+    }
   }
 
-  if (JSON.stringify(stamps) !== JSON.stringify(rStamps)) remoteChanged = true;
+  if (JSON.stringify(stamps) !== JSON.stringify(rStamps)) {
+    remoteChanged = true;
+    changedKeys.push(STAMPS_ROW);
+  }
   setItemStamps(stamps);
-  if (remoteChanged) await pushRemote(token, id, merged, stamps);
+  if (remoteChanged) await pushRemote(token, id, merged, stamps, changedKeys);
   if (localChanged) {
     try {
       window.dispatchEvent(new CustomEvent(SETTINGS_APPLIED_EVENT));

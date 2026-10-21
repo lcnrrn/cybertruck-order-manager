@@ -292,7 +292,65 @@ export function realignRows(rows: string[][]): string[][] {
   });
 }
 
-/** Replace entire Orders sheet with header + rows (source of truth write-through). */
+/** A 열(id) → 시트 행 번호들 (1부터, 머리글=1). 같은 id 가 여러 행이면 모두 */
+async function readIdRows(accessToken: string, spreadsheetId: string): Promise<{ rows: Map<string, number[]>; count: number }> {
+  const res = await sheetsFetch(accessToken, `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!A:A`)}`);
+  if (!res.ok) throw new Error(`시트 읽기 실패: ${await readError(res)}`);
+  const data = (await res.json()) as { values?: string[][] };
+  const rows = new Map<string, number[]>();
+  const vals = data.values || [];
+  vals.forEach((r, i) => {
+    const id = String(r?.[0] ?? '').trim();
+    if (!id || id === 'id') return;
+    rows.set(id, [...(rows.get(id) || []), i + 1]);
+  });
+  return { rows, count: vals.length };
+}
+
+/**
+ * 고친 주문만 그 행에 씀 (id 로 행을 찾음, 없으면 맨 아래 추가). 다른 주문 행은 절대 건드리지 않음.
+ * 쓰기 직전에 A 열을 다시 읽어서 행 위치가 바뀌었어도 정확한 행에 씀.
+ */
+export async function patchOrders(accessToken: string, orders: Order[]): Promise<{ updated: number; appended: number }> {
+  if (!orders.length) return { updated: 0, appended: 0 };
+  await ensureOrdersSheet(accessToken);
+  const spreadsheetId = sheetIdOrThrow();
+  const { rows, count } = await readIdRows(accessToken, spreadsheetId);
+  const data: { range: string; values: string[][] }[] = [];
+  const append: string[][] = [];
+  for (const o of orders) {
+    const at = rows.get(o.id);
+    const row = orderToRow(o);
+    if (at?.length) for (const n of at) data.push({ range: `${ORDERS_SHEET_NAME}!A${n}:R${n}`, values: [row] });
+    else append.push(row);
+  }
+  if (count === 0) data.unshift({ range: `${ORDERS_SHEET_NAME}!A1:R1`, values: [[...ORDERS_HEADERS]] });
+  if (data.length) {
+    const res = await sheetsFetch(accessToken, `${spreadsheetId}/values:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({ valueInputOption: 'RAW', data }),
+    });
+    if (!res.ok) throw new Error(`시트 쓰기 실패: ${await readError(res)}`);
+  }
+  if (append.length) {
+    const res = await sheetsFetch(
+      accessToken,
+      `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!A:R`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      { method: 'POST', body: JSON.stringify({ values: append }) },
+    );
+    if (!res.ok) throw new Error(`시트 추가 실패: ${await readError(res)}`);
+  }
+  // S1: 마지막으로 쓴 기기·빌드
+  try {
+    const who = JSON.stringify({ at: Date.now(), build: BUILD_ID, ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 120) : '', mode: 'patch', rows: orders.map((o) => o.name).slice(0, 10), n: orders.length });
+    await sheetsFetch(accessToken, `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!S1`)}?valueInputOption=RAW`, { method: 'PUT', body: JSON.stringify({ values: [[who]] }) });
+  } catch {
+    /* ignore */
+  }
+  return { updated: data.length, appended: append.length };
+}
+
+/** (예전 방식, 더는 동기화에 쓰지 않음) Replace entire Orders sheet with header + rows (source of truth write-through). */
 export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
   await ensureOrdersSheet(accessToken);
   const spreadsheetId = sheetIdOrThrow();
