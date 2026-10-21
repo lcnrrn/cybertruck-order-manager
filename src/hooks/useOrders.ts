@@ -1,3 +1,4 @@
+import { shippedQty } from '../shipments';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Order, OrderStatus, PeriodRange, StatusFilter } from '../types';
 import type { SourceFilter } from '../sources';
@@ -120,6 +121,8 @@ export function useOrders(products: Product[] = []) {
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== id) return o;
+        // 이미 우체국 전송에 들어간 수량 아래로는 체크 해제 불가
+        count = Math.max(count, shippedQty(o)[key] || 0);
         const doneMap = { ...(o.doneMap || {}) };
         if (count > 0) doneMap[key] = count;
         else delete doneMap[key];
@@ -129,6 +132,11 @@ export function useOrders(products: Product[] = []) {
         return next;
       }),
     );
+  }, []);
+
+  /** 주문 하나를 함수로 갱신 (null 반환 시 변경 없음) */
+  const transformOrder = useCallback((id: string, fn: (o: Order) => Order | null) => {
+    setOrders((prev) => prev.map((o) => (o.id === id ? fn(o) || o : o)));
   }, []);
 
   const deleteOrder = useCallback((id: string) => {
@@ -177,6 +185,7 @@ export function useOrders(products: Product[] = []) {
     setOrderSeq,
     moveOrder,
     setItemDone,
+    transformOrder,
   };
 }
 

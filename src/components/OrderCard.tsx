@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { activeShipments, shipmentLabel, shippableItems } from '../shipments';
 import { formatOrderDate, relativeLabel } from '../dates';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
@@ -18,6 +20,8 @@ interface Props {
   onTogglePriority: (id: string) => void;
   onTogglePaid: (id: string) => void;
   onItemDone: (id: string, key: string, count: number) => void;
+  onShip: (id: string, items: Record<string, number>) => void;
+  onCancelShip: (id: string, shipId: string) => void;
 }
 
 export function OrderCard({
@@ -30,6 +34,8 @@ export function OrderCard({
   onTogglePriority,
   onTogglePaid,
   onItemDone,
+  onShip,
+  onCancelShip,
 }: Props) {
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
   const active = order.status === '대기' || order.status === '제작중';
@@ -37,6 +43,12 @@ export function OrderCard({
   const progress = active ? orderItemProgress(order, products.map((p) => p.name)) : [];
   const totals = progressTotals(progress);
   const allDone = totals.total > 0 && totals.done >= totals.total;
+  const ships = activeShipments(order);
+  const avail = shippableItems(order, progress);
+  const availKeys = Object.keys(avail);
+  const [pick, setPick] = useState<Record<string, number> | null>(null);
+  const pickTotal = pick ? Object.values(pick).reduce((a, b) => a + b, 0) : 0;
+  const nextNo = ships.reduce((m, x) => Math.max(m, x.no), 0) + 1;
 
 
 
@@ -110,12 +122,60 @@ export function OrderCard({
                 </div>
               );
             })}
-            {allDone ? (
-              <button type="button" className="btn make-complete" onClick={() => onStatus(order.id, '완료')}>
-                모두 제작됨 → 완료 처리
+            {pick ? (
+              <div className="ship-picker" role="group" aria-label="우체국 전송 품목 선택">
+                <div className="ship-picker-head">📮 {nextNo}차 전송 품목</div>
+                {availKeys.map((k) => (
+                  <div key={k} className="ship-pick-row">
+                    <span className="ship-pick-name">{k}</span>
+                    <span className="qty-stepper">
+                      <button type="button" className="btn-icon" aria-label="1개 빼기" disabled={!pick[k]}
+                        onClick={() => setPick({ ...pick, [k]: Math.max(0, (pick[k] || 0) - 1) })}>−</button>
+                      <b>{pick[k] || 0}</b>
+                      <button type="button" className="btn-icon" aria-label="1개 더하기" disabled={(pick[k] || 0) >= avail[k]}
+                        onClick={() => setPick({ ...pick, [k]: Math.min(avail[k], (pick[k] || 0) + 1) })}>＋</button>
+                    </span>
+                  </div>
+                ))}
+                <div className="ship-picker-actions">
+                  <button type="button" className="btn btn-secondary" onClick={() => setPick(null)}>취소</button>
+                  <button type="button" className="btn ship-btn" disabled={pickTotal === 0}
+                    onClick={() => { onShip(order.id, pick); setPick(null); }}>
+                    {pickTotal}개 전송 요청
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn ship-btn make-complete"
+                disabled={availKeys.length === 0}
+                title={availKeys.length === 0 ? '제작 체크된 품목 중 아직 안 보낸 게 없어요' : undefined}
+                onClick={() => setPick({ ...avail })}
+              >
+                📮 우체국 전송{availKeys.length ? ` (${Object.values(avail).reduce((x, y) => x + y, 0)}개)` : ''}
               </button>
-            ) : null}
+            )}
           </div>
+        ) : null}
+        {ships.length ? (
+          <ul className="ship-list" aria-label="우체국 발송">
+            {ships.map((sh) => (
+              <li key={sh.id} className={`ship-line ${sh.postStatus}`}>
+                <span className="ship-no">{sh.no}차</span>
+                <span className="ship-items">{shipmentLabel(sh)}</span>
+                <span className="ship-state">
+                  {sh.postStatus === 'registered'
+                    ? `✅ 접수 완료${sh.trackingNumber ? ` · 송장 ${sh.trackingNumber}` : sh.receiptNo ? ` · ${sh.receiptNo}` : ''}`
+                    : '📮 전송 대기'}
+                </span>
+                {sh.postStatus === 'requested' ? (
+                  <button type="button" className="btn-icon ship-cancel" aria-label={`${sh.no}차 전송 취소`}
+                    onClick={() => { if (window.confirm(`${sh.no}차 우체국 전송 요청을 취소할까?`)) onCancelShip(order.id, sh.id); }}>✕</button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         ) : null}
         <p className="order-address">{order.address || '주소 없음'}</p>
         <PayBadge order={order} products={products} onToggle={onTogglePaid} showAmount />

@@ -12,6 +12,7 @@ import { getProducts, setProducts, type Product } from './products';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
+import { addShipment, attachTracking, cancelShipment, isFullyShipped, pendingShipmentCount } from './shipments';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
 import { StatusFilterBar } from './components/StatusFilter';
@@ -24,6 +25,7 @@ import { SourceManager } from './components/SourceManager';
 import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
 import { ProductionSummary } from './components/ProductionSummary';
+import { orderItemProgress } from './production';
 import { buildProductionSummary, formatDuration, isUnpaid, orderHasProduct, orderAmount, pendingMinutes, formatWon } from './production';
 import { SalesReport } from './components/SalesReport';
 import { FilamentInventory } from './components/FilamentInventory';
@@ -139,6 +141,7 @@ export default function App() {
     setStatus: rawSetStatus,
     importOrders: rawImportOrders,
     setItemDone: rawSetItemDone,
+    transformOrder: rawTransformOrder,
   } = useOrders(products);
   // 최신 내용을 받기 전(잠금)에는 모든 수정 차단
   const lockedRef = useRef(false);
@@ -162,6 +165,10 @@ export default function App() {
   const setItemDone: typeof rawSetItemDone = (id, k, c) => {
     if (!blocked()) rawSetItemDone(id, k, c);
   };
+  const transformOrder: typeof rawTransformOrder = (id, fn) => {
+    if (!blocked()) rawTransformOrder(id, fn);
+  };
+  const [postOnly, setPostOnly] = useState(false);
   const [filter, setFilter] = useState<StatusFilter>(loadStatusFilter);
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('전체');
   const [period, setPeriod] = useState<PeriodRange>(loadPeriodFilter);
@@ -436,7 +443,17 @@ export default function App() {
       if (target) updateOrder(id, { priority: !target.priority });
     },
     onItemDone: (id: string, key: string, count: number) => setItemDone(id, key, count),
+    onShip: (id: string, items: Record<string, number>) => {
+      const names = products.map((p) => p.name);
+      transformOrder(id, (o) => addShipment(o, items, orderItemProgress(o, names)));
+      showToast('📮 우체국 전송 대기에 올렸어요');
+    },
+    onCancelShip: (id: string, shipId: string) => {
+      transformOrder(id, (o) => cancelShipment(o, shipId));
+      showToast('전송 요청을 취소했어요');
+    },
   };
+  const postPending = useMemo(() => pendingShipmentCount(orders), [orders]);
 
   const makeSummary = useMemo(() => buildProductionSummary(orders, products), [orders, products]);
   const makeMin = useMemo(() => pendingMinutes(orders, products), [orders, products]);
@@ -449,8 +466,9 @@ export default function App() {
       orders
         .filter((o) => o.status === '대기' || o.status === '제작중')
         .filter((o) => !productFilter || orderHasProduct(o, productFilter, products))
+        .filter((o) => !postOnly || (o.shipments || []).some((x) => x.postStatus === 'requested'))
         .sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || (a.createdAt || a.updatedAt) - (b.createdAt || b.updatedAt)),
-    [orders, productFilter, products],
+    [orders, productFilter, products, postOnly],
   );
   const tabInfo = TABS.find((t) => t.id === tab)!;
   const stats: { label: string; value: string; tone?: string }[] =
@@ -612,6 +630,16 @@ export default function App() {
               <h2 className="section-title">
                 ✅ 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
               </h2>
+              {postPending > 0 || postOnly ? (
+                <button
+                  type="button"
+                  className={`post-chip${postOnly ? ' on' : ''}`}
+                  aria-pressed={postOnly}
+                  onClick={() => setPostOnly((v) => !v)}
+                >
+                  📮 전송 대기 {postPending}건{postOnly ? ' · 전체 보기' : ''}
+                </button>
+              ) : null}
               <div className="order-list">{renderCards(workOrders)}</div>
             </>
           )}
@@ -797,8 +825,16 @@ export default function App() {
               <TrackingRegisterModal
                 orders={orders.filter((o) => o.status !== '완료')}
                 onApply={(updates) => {
+                  const names = products.map((p) => p.name);
                   for (const u of updates) {
-                    updateOrder(u.orderId, { trackingNumber: u.trackingNumber });
+                    const cur = orders.find((o) => o.id === u.orderId);
+                    if (cur?.shipments?.some((x) => x.postStatus !== 'cancelled')) {
+                      const next = attachTracking(cur, u.trackingNumber);
+                      transformOrder(u.orderId, () => next);
+                      if (cur.status !== '완료' && isFullyShipped(next, orderItemProgress(next, names))) setStatus(u.orderId, '완료');
+                    } else {
+                      updateOrder(u.orderId, { trackingNumber: u.trackingNumber });
+                    }
                   }
                   showToast(`송장 ${updates.length}건 등록됨`);
                   setSheet('none');

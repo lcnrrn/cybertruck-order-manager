@@ -1394,3 +1394,23 @@ html, body { overflow-x: clip; }
 .locked-banner { display: block; width: 100%; margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid #b45309; background: rgba(120, 53, 15, 0.45); color: #fde68a; font-size: 13px; text-align: left; overflow-wrap: anywhere; }
 .is-locked [data-lock-zone] :is(button, input, select, textarea, label) { opacity: 0.55; }
 .is-locked .fab { opacity: 0.4; }
+
+/* 우체국 전송 (분할 발송) */
+.ship-btn { width: 100%; min-height: 44px; background: #c2410c; color: #fff; border: none; font-weight: 700; }
+.ship-btn:disabled { background: var(--border); color: var(--text-muted, #888); }
+.ship-picker { margin-top: 8px; padding: 8px; border: 1px solid #fdba74; border-radius: 10px; background: rgba(251,146,60,0.08); display: grid; gap: 6px; }
+.ship-picker-head { font-weight: 700; font-size: 0.9rem; }
+.ship-pick-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ship-pick-name { flex: 1; min-width: 0; font-size: 0.88rem; overflow-wrap: anywhere; }
+.ship-picker-actions { display: grid; grid-template-columns: 1fr 2fr; gap: 6px; }
+.ship-picker-actions .ship-btn { width: auto; }
+.ship-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.ship-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 8px; border-radius: 8px; font-size: 0.82rem; border: 1px solid var(--border); min-width: 0; }
+.ship-line.requested { border-color: #fdba74; background: rgba(251,146,60,0.08); }
+.ship-line.registered { border-color: #86efac; background: rgba(34,197,94,0.08); }
+.ship-no { font-weight: 700; flex: none; }
+.ship-items { flex: 1 1 8em; min-width: 0; overflow-wrap: anywhere; }
+.ship-state { flex: none; font-weight: 600; overflow-wrap: anywhere; max-width: 100%; }
+.ship-cancel { min-width: 32px; min-height: 32px; flex: none; }
+.post-chip { display: inline-flex; align-items: center; margin: 0 0 10px; padding: 6px 12px; border-radius: 999px; border: 1px solid #fdba74; background: rgba(251,146,60,0.1); color: inherit; font-weight: 700; font-size: 0.88rem; cursor: pointer; }
+.post-chip.on { background: #c2410c; color: #fff; border-color: #c2410c; }
