@@ -38,6 +38,8 @@ import { EpostPanel } from './components/EpostPanel';
 import { loadEpostRequest, type EpostRequest } from './epost';
 import { BackupPanel } from './components/BackupPanel';
 import { LockedBanner, SyncGate } from './components/SyncGate';
+import { PullToRefresh } from './components/PullToRefresh';
+import { useAppUpdate } from './hooks/useAppUpdate';
 
 type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost';
 
@@ -261,6 +263,16 @@ export default function App() {
     replaceOrders,
     onToast: showToast,
   });
+  const appUpdate = useAppUpdate({ dirty: google.dirty, busy: google.status === 'syncing' || sheet !== 'none' });
+  const refreshAll = useCallback(async () => {
+    if (await appUpdate.check()) {
+      if (!google.dirty) return void appUpdate.apply();
+      showToast('새 버전이 있어요 — 위의 「업데이트」를 눌러 주세요');
+      return;
+    }
+    await google.syncNow();
+  }, [appUpdate, google, showToast]);
+
 
   lockedRef.current = google.locked;
   lockToastRef.current = showToast;
@@ -501,6 +513,12 @@ export default function App() {
 
   return (
     <div className={`app view-card tabbed tab-${tab}${google.locked ? ' is-locked' : ''}`} onClickCapture={onLockCapture} onChangeCapture={onLockCapture}>
+      <PullToRefresh onRefresh={() => void refreshAll()} disabled={sheet !== 'none'} />
+      {appUpdate.available ? (
+        <button type="button" className="update-banner" onClick={() => void appUpdate.apply()}>
+          {appUpdate.stuck ? '새 버전을 못 불러왔어요 · 앱을 완전히 닫았다 다시 열어 주세요' : `새 버전이 있어요 · 업데이트${google.dirty ? ' (고친 내용은 새 버전에서 저장돼요)' : ''}`}
+        </button>
+      ) : null}
       <SyncGate gate={google.gate} error={google.lastError} onRetry={google.retryGate} onReadOnly={google.viewReadOnly} />
       <nav className="tabbar" aria-label="화면 전환">
         <div className="tabbar-brand">
@@ -529,6 +547,9 @@ export default function App() {
             <p className="eyebrow">Cybertruck · 3D Print</p>
             <h1>{tabInfo.title}</h1>
           </div>
+          <button type="button" className="btn btn-ghost btn-compact refresh-btn" onClick={() => void refreshAll()} disabled={google.status === 'syncing'} aria-label="새로고침">
+            {google.status === 'syncing' ? '↻ 받는 중…' : '↻ 새로고침'}
+          </button>
           {tab === 'orders' ? (
             <div className="header-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}>송장 등록</button>
