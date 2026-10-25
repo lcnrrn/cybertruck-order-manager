@@ -1,0 +1,34 @@
+*{box-sizing:border-box}html,body{margin:0;background:#0b0d10;color:#e5e7eb;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;-webkit-text-size-adjust:100%;overflow-x:hidden}
+.b-wrap{max-width:560px;margin:0 auto;padding:12px 12px calc(110px + env(safe-area-inset-bottom))}
+.b-head{padding:14px 4px 6px}.b-head h1{font-size:22px;margin:0 0 4px}.b-head p{margin:0;color:#9ca3af;font-size:14px}
+.b-head nav{display:flex;gap:8px;margin-top:12px}.b-head nav a{flex:1;text-align:center;padding:10px;border-radius:10px;background:#161a20;color:#e5e7eb;text-decoration:none;font-size:14px;border:1px solid #262c35}
+.b-card{background:#12161c;border:1px solid #232933;border-radius:14px;padding:14px;margin:10px 0}
+.b-card h3{margin:0 0 6px;font-size:16px}.b-no{color:#60a5fa}.b-card h2{margin:0 0 8px}
+em{font-style:normal;color:#f87171;font-size:12px;margin-left:4px}
+.b-muted{color:#9ca3af}.b-small{font-size:12px;line-height:1.5}.b-center{text-align:center}
+.b-notice{font-size:14px;line-height:1.6;background:#0f1d33;border-color:#1e3a5f}
+.b-warn{background:#3b2a0a;border-color:#a16207;color:#fde68a}
+.b-opt{border:1px solid #2a313b;border-radius:12px;margin-top:8px;overflow:hidden}.b-opt.on{border-color:#3b82f6;background:#0f1d33}
+.b-opt-main{all:unset;display:flex;align-items:center;gap:10px;width:100%;padding:13px 12px;cursor:pointer;box-sizing:border-box}
+.b-check{width:22px;height:22px;border-radius:6px;border:2px solid #4b5563;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:none}
+.on .b-check{background:#3b82f6;border-color:#3b82f6;color:#fff}
+.b-opt-label{flex:1;min-width:0;font-size:15px}.b-price{font-weight:700;white-space:nowrap}
+.b-qty{display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:0 12px 12px}
+.b-qty button{width:38px;height:38px;border-radius:10px;border:1px solid #3b82f6;background:transparent;color:#e5e7eb;font-size:20px}
+.b-fields label{display:block;font-size:14px;margin-bottom:12px}
+.b-fields input,.b-fields textarea{display:block;width:100%;margin-top:6px;padding:12px;font-size:16px;border-radius:10px;border:1px solid #2a313b;background:#0b0d10;color:#e5e7eb;font-family:inherit}
+.b-hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
+.b-agree{display:flex;gap:10px;align-items:center;font-size:15px}.b-agree input{width:22px;height:22px}
+.b-bar{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:#0b0d10ee;border-top:1px solid #232933;backdrop-filter:blur(8px)}
+.b-bar b{font-size:20px}
+.b-btn{display:inline-block;padding:14px 22px;border-radius:12px;border:0;background:#3b82f6;color:#fff;font-size:16px;font-weight:700;text-decoration:none;text-align:center}
+.b-fields .b-btn{width:100%}.b-btn:disabled{opacity:.5}
+.b-ghost{padding:10px 14px;border-radius:10px;border:1px solid #3b82f6;background:transparent;color:#bfdbfe;font-size:14px;margin-bottom:8px}
+.b-err{background:#3f1212;border:1px solid #b91c1c;color:#fecaca;padding:10px 12px;border-radius:10px;margin-top:10px;font-size:14px}
+.b-bar~.b-err{position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom))}
+.b-ok p{margin:6px 0}.b-bank{font-size:17px;font-weight:700;word-break:keep-all}
+.b-row{display:flex;justify-content:space-between;align-items:center}
+.b-items{margin:8px 0;padding-left:18px;font-size:14px;line-height:1.6}
+.b-badges{display:flex;gap:6px;flex-wrap:wrap}.b-badge{font-size:12px;padding:4px 8px;border-radius:999px;background:#262c35}.b-badge.ok{background:#14532d;color:#bbf7d0}
+.b-steps{display:flex;list-style:none;padding:0;margin:12px 0 4px;gap:4px}.b-steps li{flex:1;text-align:center;font-size:11px;color:#6b7280;padding-top:8px;border-top:3px solid #262c35}.b-steps li.on{color:#bfdbfe;border-color:#3b82f6}
+.b-track{display:flex;justify-content:space-between;gap:8px;margin-top:8px;padding:12px;border-radius:10px;background:#0f1d33;color:#bfdbfe;text-decoration:none;font-size:14px;word-break:break-all}.b-track span{white-space:nowrap}
