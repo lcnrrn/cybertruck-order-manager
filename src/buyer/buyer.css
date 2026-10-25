@@ -32,3 +32,6 @@ em{font-style:normal;color:#f87171;font-size:12px;margin-left:4px}
 .b-badges{display:flex;gap:6px;flex-wrap:wrap}.b-badge{font-size:12px;padding:4px 8px;border-radius:999px;background:#262c35}.b-badge.ok{background:#14532d;color:#bbf7d0}
 .b-steps{display:flex;list-style:none;padding:0;margin:12px 0 4px;gap:4px}.b-steps li{flex:1;text-align:center;font-size:11px;color:#6b7280;padding-top:8px;border-top:3px solid #262c35}.b-steps li.on{color:#bfdbfe;border-color:#3b82f6}
 .b-track{display:flex;justify-content:space-between;gap:8px;margin-top:8px;padding:12px;border-radius:10px;background:#0f1d33;color:#bfdbfe;text-decoration:none;font-size:14px;word-break:break-all}.b-track span{white-space:nowrap}
+.b-prog{margin:10px 0}.b-bar-bg{height:8px;border-radius:99px;background:#262c35;overflow:hidden;margin:6px 0 8px}.b-bar-fg{height:100%;background:#3b82f6}
+.b-pitems{list-style:none;padding:0;margin:0;font-size:14px}.b-pitems li{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #1f2530}.b-pitems li.full b{color:#86efac}.b-pitems li span{min-width:0}
+.b-ship{margin-top:10px;padding:10px;border:1px solid #232933;border-radius:10px}.b-ship .b-track{margin-top:6px}

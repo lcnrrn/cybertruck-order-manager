@@ -12,12 +12,12 @@ export async function submitOrder(b: SubmitBody): Promise<{ ok: boolean; error?:
   return r.json();
 }
 
-export interface LookupShipment { no: number; items: Record<string, number>; trackingNumber: string | null; registered: boolean }
+export interface LookupShipment { no: number; items: Record<string, number>; trackingNumber: string | null; registered: boolean; at?: number | null }
 export interface LookupOrder {
   no: string; createdAt: number | null; items: string[]; status: string; paid: boolean;
-  amount: number | null; trackingNumber: string | null; shipments: LookupShipment[];
+  amount: number | null; itemsRaw?: string; done?: Record<string, number>; trackingNumber: string | null; shipments: LookupShipment[];
 }
-export async function lookup(name: string, last4: string): Promise<{ ok: boolean; error?: string; orders?: LookupOrder[]; prices?: Record<string, number> }> {
+export async function lookup(name: string, last4: string): Promise<{ ok: boolean; error?: string; orders?: LookupOrder[]; prices?: Record<string, number>; names?: string[] }> {
   const u = `${APPS_SCRIPT_URL}?action=lookup&name=${encodeURIComponent(name)}&last4=${encodeURIComponent(last4)}`;
   const r = await fetch(u);
   return r.json();

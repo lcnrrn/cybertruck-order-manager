@@ -140,15 +140,18 @@ function doGet(e) {
       no: id.slice(-4).toUpperCase(),
       createdAt: Number(r[9]) || null,
       items: items,
+      // 주문 관리 앱 제작 체크(R 열 d: {제품명: 완료 개수}) — 품목별 진행률은 페이지가 앱과 같은 방식으로 계산
+      itemsRaw: items.join(' / '),
+      done: (x.d && typeof x.d === 'object') ? x.d : {},
       status: String(r[6] || '대기'),
       paid: String(r[12]) === 'true',
       amount: isNaN(amount) ? null : amount,
       trackingNumber: String(r[10] || '') || null,
       shipments: (x.sh || []).filter(function (s) { return s && s.postStatus !== 'cancelled'; }).map(function (s) {
-        return { no: s.no, items: s.items || {}, trackingNumber: s.trackingNumber || null, registered: s.postStatus === 'registered' };
+        return { no: s.no, items: s.items || {}, at: s.registeredAt || s.requestedAt || null, trackingNumber: s.trackingNumber || null, registered: s.postStatus === 'registered' };
       }),
     });
   });
   out.sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
-  return json_({ ok: true, orders: out, prices: prices });
+  return json_({ ok: true, orders: out, prices: prices, names: Object.keys(prices) });
 }

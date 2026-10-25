@@ -2,6 +2,7 @@ import { StrictMode, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BANK, CATALOG, SHIPPING, epostTrackUrl } from './config';
 import { apiReady, lookup, submitOrder, type LookupOrder } from './api';
+import { orderItemProgress, progressTotals } from '../production';
 import './buyer.css';
 
 const won = (n: number) => `${n.toLocaleString('ko-KR')}원`;
@@ -144,8 +145,8 @@ function OrderPage() {
 }
 
 function stepOf(o: LookupOrder): number {
-  if (o.trackingNumber || o.shipments.some((s) => s.trackingNumber)) return 4;
-  if (o.status === '완료') return 3;
+  const sent = Boolean(o.trackingNumber || o.shipments.some((s) => s.trackingNumber));
+  if (o.status === '완료') return sent ? 4 : 3;
   if (o.status === '제작중') return 2;
   return o.paid ? 1 : 0;
 }
@@ -157,6 +158,7 @@ function LookupPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [orders, setOrders] = useState<LookupOrder[] | null>(null);
+  const [names, setNames] = useState<string[]>([]);
 
   const go = async () => {
     setErr('');
@@ -165,7 +167,10 @@ function LookupPage() {
     try {
       const r = await lookup(name.trim(), last4);
       if (!r.ok) setErr(r.error || '조회에 실패했어요');
-      else setOrders(r.orders || []);
+      else {
+        setOrders(r.orders || []);
+        setNames(r.names || Object.keys(r.prices || {}));
+      }
     } catch {
       setErr('네트워크 오류예요. 다시 시도해 주세요');
     } finally {
@@ -186,25 +191,51 @@ function LookupPage() {
       {orders && !orders.length && <div className="b-card b-muted">주문을 찾지 못했어요. 주문할 때 쓴 성함과 연락처인지 확인해 주세요.</div>}
       {orders?.map((o) => {
         const st = stepOf(o);
-        const tracks = [...o.shipments.filter((s) => s.trackingNumber).map((s) => ({ label: `${s.no}차 발송`, no: s.trackingNumber as string }))];
-        if (o.trackingNumber && !tracks.some((t) => t.no === o.trackingNumber)) tracks.unshift({ label: '발송', no: o.trackingNumber });
+        const prog = o.done && names.length ? orderItemProgress({ items: o.itemsRaw ?? o.items.join(' / '), doneMap: o.done }, names) : null;
+        const tot = progressTotals(prog || []);
+        const shipped = o.shipments.filter((sh) => sh.registered || sh.trackingNumber);
+        const extraTrack = o.trackingNumber && !o.shipments.some((sh) => sh.trackingNumber === o.trackingNumber) ? o.trackingNumber : null;
         return (
           <section className="b-card" key={o.no + (o.createdAt || '')}>
             <div className="b-row">
               <b>주문 {o.no}</b>
               <span className="b-muted b-small">{o.createdAt ? new Date(o.createdAt).toLocaleDateString('ko-KR') : ''}</span>
             </div>
-            <ul className="b-items">{o.items.map((it) => <li key={it}>{it}</li>)}</ul>
+            {prog ? (
+              <div className="b-prog">
+                <div className="b-row"><b>제작 {tot.done}/{tot.total}</b><span className="b-muted b-small">{tot.total ? Math.round((tot.done / tot.total) * 100) : 0}%</span></div>
+                <div className="b-bar-bg"><div className="b-bar-fg" style={{ width: `${tot.total ? (tot.done / tot.total) * 100 : 0}%` }} /></div>
+                <ul className="b-pitems">
+                  {prog.map((p) => (
+                    <li key={p.key} className={p.done >= p.qty ? 'full' : ''}>
+                      <span>{p.done >= p.qty ? '✅' : p.done > 0 ? '🛠️' : '⏳'} {p.label}</span>
+                      <b>{p.done >= p.qty ? '완료' : `${p.done}/${p.qty}`}</b>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <ul className="b-items">{o.items.map((it) => <li key={it}>{it}</li>)}</ul>
+            )}
             <div className="b-badges">
               <span className={o.paid ? 'b-badge ok' : 'b-badge'}>{o.paid ? '입금 확인' : '입금 전'}</span>
-              <span className="b-badge">{st >= 4 ? '발송' : o.status}</span>
+              <span className="b-badge">{st >= 4 ? '발송' : o.status}{st < 4 && o.shipments.some((sh) => sh.registered || sh.trackingNumber) ? ' · 일부 발송' : ''}</span>
             </div>
             <ol className="b-steps">{STEPS.map((s, i) => <li key={s} className={i <= st ? 'on' : ''}>{s}</li>)}</ol>
-            {tracks.map((t) => (
-              <a key={t.no} className="b-track" href={epostTrackUrl(t.no)} target="_blank" rel="noreferrer">
-                📦 {t.label} · 우체국 {t.no} <span>배송조회 ›</span>
-              </a>
+            {shipped.map((sh) => (
+              <div key={sh.no} className="b-ship">
+                <div className="b-row"><b>📦 {sh.no}차 발송</b>{sh.at ? <span className="b-muted b-small">{new Date(sh.at).toLocaleDateString('ko-KR')}</span> : null}</div>
+                <div className="b-small">{Object.entries(sh.items).map(([k, v]) => `${k}${v > 1 ? ` ${v}개` : ''}`).join(' · ')}</div>
+                {sh.trackingNumber ? (
+                  <a className="b-track" href={epostTrackUrl(sh.trackingNumber)} target="_blank" rel="noreferrer">우체국 {sh.trackingNumber} <span>배송조회 ›</span></a>
+                ) : (
+                  <div className="b-muted b-small">우체국 접수 완료 · 송장번호 곧 나와요</div>
+                )}
+              </div>
             ))}
+            {extraTrack && (
+              <a className="b-track" href={epostTrackUrl(extraTrack)} target="_blank" rel="noreferrer">📦 발송 · 우체국 {extraTrack} <span>배송조회 ›</span></a>
+            )}
             {!o.paid && <p className="b-muted b-small">입금 계좌: {BANK.bank} {BANK.number} {BANK.holder}</p>}
           </section>
         );
