@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { resolve } from 'node:path';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // 배포마다 바뀌는 빌드 id (시간순 비교 가능) — 옛 버전 앱 감지용
@@ -15,6 +16,8 @@ const versionFile = {
 // 로컬/다른 호스트에서는 base를 '/'로 바꿔도 됩니다.
 export default defineConfig({
   base: '/cybertruck-order-manager/',
+  // 구매자용 주문·조회 페이지 (order.html, lookup.html) — 주문 관리 앱과 별개 화면
+  build: { rollupOptions: { input: { main: resolve(__dirname, 'index.html'), order: resolve(__dirname, 'order.html'), lookup: resolve(__dirname, 'lookup.html') } } },
   define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
   plugins: [
     react(),
