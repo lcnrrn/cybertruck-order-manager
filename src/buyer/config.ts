@@ -3,7 +3,7 @@
  * APPS_SCRIPT_URL: scripts/apps-script/README.md 대로 배포한 웹 앱 주소 (…/exec)
  * 비어 있으면 주문·조회 페이지가 "준비 중"으로 보임.
  */
-export const APPS_SCRIPT_URL = '';
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxDEKz1CKcDDpfQXC4T50zd8nAsukrowM9OuNM4DbL2WQ7x5_yVZyTwIzugq_l2GLi-CA/exec';
 
 export const BANK = { number: '3333373647928', bank: '카카오뱅크', holder: '이대규' };
 
