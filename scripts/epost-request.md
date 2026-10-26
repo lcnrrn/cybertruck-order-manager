@@ -11,6 +11,8 @@
 ```json
 {
   "id": "ep-mgz3k1-ab12",
+  "mode": "visit",
+  "pickupDate": "2026-10-27",
   "requestedAt": 1761010000000,
   "shipmentIds": ["sh-mvhf9d43-bl769", "..."],
   "status": "pending",
@@ -23,11 +25,17 @@
   "message": "우체국 로그인 필요"
 }
 ```
+### 접수 방식 (`mode`)
+- `"counter"` (기본, 필드 없으면 counter) = **창구 접수(사전접수)**: 기존 흐름 그대로 (신청유형 우체국, 즉납 창구결제).
+- `"visit"` = **방문 접수(집 픽업)**: epost 신청유형을 **방문접수**로 선택, 픽업 주소는 보내는 사람 주소. `pickupDate`(YYYY-MM-DD, 앱 기본 = 내일 이후 첫 평일, 평일만) 를 방문 희망일로 선택. 해당 날짜 불가면 가장 가까운 가능일로 하고 done message 에 적거나, 선택 불가면 error message. 결제는 방문접수 화면의 결제수단(등록 카드 등)으로; 결제수단이 없으면 error `카드 확인 필요`.
+- 나머지 기본값(3kg, 80cm, 생활용품, 문자수신 등)은 동일.
+- 봇은 done/error 로 바꿀 때 `mode`·`pickupDate` 를 그대로 유지할 것 (앱 완료 표시에 씀).
+
 | status | 쓰는 쪽 | 추가 필드 | 앱 표시 |
 |---|---|---|---|
 | pending | 앱 | — | 접수 대기 중 (15분 안에 처리) |
 | running | 봇 | startedAt | 접수 중 |
-| done | 봇 | finishedAt, receiptNo, count, amount(원) | 접수 완료 · 접수번호 · N건 · 예상 금액 |
+| done | 봇 | finishedAt, receiptNo, count, amount(원) (mode/pickupDate 유지) | 창구/방문 접수 완료 · 접수번호 · N건 · 예상 금액 |
 | error | 봇 | finishedAt, message | message + 「다시 요청」 버튼 |
 
 pending/running 동안 앱의 「접수 요청」 버튼은 비활성. done/error 뒤에 새 요청은 같은 행을 새 id로 덮어씀.
@@ -41,7 +49,7 @@ pending/running 동안 앱의 「접수 요청」 버튼은 비활성. done/erro
 
 ## 봇 처리 순서
 1. `설정` A:C 읽기 → `epostRequest` 행, status `pending` 이면 시작.
-2. status `running`, startedAt 기록 (C열 = now).
+2. `mode`(없으면 counter)·`pickupDate` 확인. status `running`, startedAt 기록 (C열 = now).
 3. `주문` 탭 R열 JSON `.sh[]` 에서 `shipmentIds` 중 postStatus `requested` 인 것만 접수 (cancelled/registered 는 건너뜀). 기존 흐름: `npx tsx scripts/epost-queue.mts <values.json>`.
 4. 성공: 각 발송건 `postStatus:"registered"`, `registeredAt`, `receiptNo`, `updatedAt` = 같은 ms, 그 주문 `I{row}` 에도 같은 ms. 그 다음 epostRequest 를 `done` + receiptNo/count/amount (C열 = now).
 5. 실패: `error` + message (예: `우체국 로그인 필요`, `카드 확인 필요`), C열 = now. 발송건은 requested 그대로.

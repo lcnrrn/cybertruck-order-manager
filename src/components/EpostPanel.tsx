@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Order, Shipment } from '../types';
 import { shipmentLabel } from '../shipments';
 import { formatWon } from '../production';
-import { createEpostRequest, isBusy, type EpostRequest } from '../epost';
+import { createEpostRequest, isBusy, isWeekend, loadEpostMode, modeLabel, nextWeekday, saveEpostMode, type EpostMode, type EpostRequest } from '../epost';
 
 const PER_PARCEL = 4000; // 3kg·80cm 창구 접수 예상 요금(원/건)
 
@@ -26,6 +26,14 @@ interface Props {
 
 export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose }: Props) {
   const [confirm, setConfirm] = useState(false);
+  const [mode, setModeState] = useState<EpostMode>(() => loadEpostMode());
+  const [pickupDate, setPickupDate] = useState(() => nextWeekday());
+  const setMode = (m: EpostMode) => {
+    setModeState(m);
+    saveEpostMode(m);
+  };
+  const minDate = nextWeekday();
+  const dateBad = mode === 'visit' && (!pickupDate || isWeekend(pickupDate) || pickupDate < minDate);
   const pending = useMemo(() => {
     const out: { o: Order; s: Shipment }[] = [];
     for (const o of orders) for (const s of o.shipments || []) if (s.postStatus === 'requested') out.push({ o, s });
@@ -48,7 +56,7 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose }
 
   const submit = () => {
     setConfirm(false);
-    onRequest(createEpostRequest(pending.map((p) => p.s.id)));
+    onRequest(createEpostRequest(pending.map((p) => p.s.id), Date.now(), mode, mode === 'visit' ? pickupDate : undefined));
   };
 
   return (
@@ -57,11 +65,11 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose }
 
       {request && (
         <div className={`epost-status st-${request.status}`}>
-          {request.status === 'pending' && <b>⏳ 접수 대기 중 (15분 안에 처리)</b>}
-          {request.status === 'running' && <b>🔄 접수 중…</b>}
+          {request.status === 'pending' && <b>⏳ 접수 대기 중 (15분 안에 처리) · {modeLabel(request)}</b>}
+          {request.status === 'running' && <b>🔄 접수 중… · {modeLabel(request)}</b>}
           {request.status === 'done' && (
             <b>
-              ✅ 접수 완료 · 접수번호 {request.receiptNo || '-'} · {request.count ?? request.shipmentIds.length}건
+              ✅ {modeLabel(request)} 완료 · 접수번호 {request.receiptNo || '-'} · {request.count ?? request.shipmentIds.length}건
               {typeof request.amount === 'number' ? ` · 예상 ${formatWon(request.amount)}` : ''}
             </b>
           )}
@@ -102,10 +110,22 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose }
         </ul>
       )}
 
+      <div className="epost-mode" role="radiogroup" aria-label="접수 방식">
+        <button type="button" role="radio" aria-checked={mode === 'counter'} className={`btn ${mode === 'counter' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setMode('counter')}>🏤 창구 접수<small>사전접수</small></button>
+        <button type="button" role="radio" aria-checked={mode === 'visit'} className={`btn ${mode === 'visit' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setMode('visit')}>🚚 방문 접수<small>집 픽업</small></button>
+      </div>
+      {mode === 'visit' && (
+        <label className="epost-date">
+          픽업 희망일 (평일)
+          <input type="date" value={pickupDate} min={minDate} onChange={(e) => setPickupDate(e.target.value)} />
+          {dateBad && <small className="epost-warn">내일 이후 평일로 골라줘</small>}
+        </label>
+      )}
+
       <button
         type="button"
         className="btn btn-primary epost-go"
-        disabled={busy || pending.length === 0}
+        disabled={busy || pending.length === 0 || dateBad}
         onClick={() => setConfirm(true)}
       >
         {busy ? (request?.status === 'running' ? '접수 중…' : '접수 대기 중…') : `접수 요청 (${pending.length}건)`}
@@ -114,10 +134,10 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose }
       {confirm && (
         <div className="epost-confirm" role="alertdialog">
           <p><b>{pending.length}건</b>을 우체국에 접수할까?</p>
-          <p className="empty-hint">예상 {formatWon(pending.length * PER_PARCEL)} · 창구에서 결제</p>
+          <p className="empty-hint">{modeLabel({ mode, pickupDate })} · 예상 {formatWon(pending.length * PER_PARCEL)}{mode === 'visit' ? ' · 방문 접수는 요금이 더 나올 수 있음' : ' · 창구에서 결제'}</p>
           <div className="form-actions">
             <button type="button" className="btn btn-ghost" onClick={() => setConfirm(false)}>취소</button>
-            <button type="button" className="btn btn-primary" onClick={submit}>접수 요청</button>
+            <button type="button" className="btn btn-primary" disabled={dateBad} onClick={submit}>접수 요청</button>
           </div>
         </div>
       )}
