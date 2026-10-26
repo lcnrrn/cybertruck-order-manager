@@ -20,7 +20,7 @@ interface Props {
   onTogglePriority: (id: string) => void;
   onTogglePaid: (id: string) => void;
   onItemDone: (id: string, key: string, count: number) => void;
-  onShip: (id: string, items: Record<string, number>) => void;
+  onShip: (id: string, items: Record<string, number>, mode?: 'counter' | 'visit') => void;
   onCancelShip: (id: string, shipId: string) => void;
 }
 
@@ -47,6 +47,7 @@ export function OrderCard({
   const avail = shippableItems(order, progress);
   const availKeys = Object.keys(avail);
   const [pick, setPick] = useState<Record<string, number> | null>(null);
+  const [pickMode, setPickMode] = useState<'counter' | 'visit'>('counter');
   const pickTotal = pick ? Object.values(pick).reduce((a, b) => a + b, 0) : 0;
   const nextNo = ships.reduce((m, x) => Math.max(m, x.no), 0) + 1;
 
@@ -124,7 +125,7 @@ export function OrderCard({
             })}
             {pick ? (
               <div className="ship-picker" role="group" aria-label="우체국 전송 품목 선택">
-                <div className="ship-picker-head">📮 {nextNo}차 전송 품목</div>
+                <div className="ship-picker-head">{pickMode === 'visit' ? '🚚 방문' : '🏤 창구'} 접수 · {nextNo}차 품목</div>
                 {availKeys.map((k) => (
                   <div key={k} className="ship-pick-row">
                     <span className="ship-pick-name">{k}</span>
@@ -139,22 +140,27 @@ export function OrderCard({
                 ))}
                 <div className="ship-picker-actions">
                   <button type="button" className="btn btn-secondary" onClick={() => setPick(null)}>취소</button>
-                  <button type="button" className="btn ship-btn" disabled={pickTotal === 0}
-                    onClick={() => { onShip(order.id, pick); setPick(null); }}>
+                  <button type="button" className={`btn ship-btn${pickMode === 'visit' ? ' visit' : ''}`} disabled={pickTotal === 0}
+                    onClick={() => { onShip(order.id, pick, pickMode); setPick(null); }}>
                     {pickTotal}개 전송 요청
                   </button>
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                className="btn ship-btn make-complete"
-                disabled={availKeys.length === 0}
-                title={availKeys.length === 0 ? '제작 체크된 품목 중 아직 안 보낸 게 없어요' : undefined}
-                onClick={() => setPick({ ...avail })}
-              >
-                📮 우체국 전송{availKeys.length ? ` (${Object.values(avail).reduce((x, y) => x + y, 0)}개)` : ''}
-              </button>
+              <div className="ship-btns make-complete">
+                {(['counter', 'visit'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`btn ship-btn${m === 'visit' ? ' visit' : ''}`}
+                    disabled={availKeys.length === 0}
+                    title={availKeys.length === 0 ? '제작 체크된 품목 중 아직 안 보낸 게 없어요' : undefined}
+                    onClick={() => { setPickMode(m); setPick({ ...avail }); }}
+                  >
+                    {m === 'visit' ? '🚚 방문 접수' : '🏤 창구 접수'}{availKeys.length ? ` (${Object.values(avail).reduce((x, y) => x + y, 0)}개)` : ''}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         ) : null}
@@ -163,6 +169,7 @@ export function OrderCard({
             {ships.map((sh) => (
               <li key={sh.id} className={`ship-line ${sh.postStatus}`}>
                 <span className="ship-no">{sh.no}차</span>
+                <span className={`mode-badge ${sh.mode === 'visit' ? 'visit' : 'counter'}`}>{sh.mode === 'visit' ? '방문' : '창구'}</span>
                 <span className="ship-items">{shipmentLabel(sh)}</span>
                 <span className="ship-state">
                   {sh.postStatus === 'registered'
