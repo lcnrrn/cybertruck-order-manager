@@ -1,7 +1,6 @@
 import { shippedQty } from '../shipments';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Order, OrderStatus, PeriodRange, StatusFilter } from '../types';
-import type { SourceFilter } from '../sources';
 import { loadOrders, saveOrders } from '../storage';
 import { orderTimestamp, resolvePeriodBounds } from '../period';
 import type { Product } from '../products';
@@ -192,7 +191,6 @@ export function useOrders(products: Product[] = []) {
 export function useFilteredOrders(
   orders: Order[],
   statusFilter: StatusFilter,
-  sourceFilter: SourceFilter,
   query: string,
   period: PeriodRange,
   products: Product[] = [],
@@ -205,10 +203,6 @@ export function useFilteredOrders(
       .filter((o) => matchesStatus(o.status, statusFilter))
       .filter((o) => statusFilter !== '미입금' || isUnpaid(o, products))
       .filter((o) => {
-        if (sourceFilter === '전체') return true;
-        return (o.group || '').trim() === sourceFilter;
-      })
-      .filter((o) => {
         if (!bounds) return true;
         const ts = orderTimestamp(o.createdAt, o.updatedAt);
         return ts >= bounds[0] && ts <= bounds[1];
@@ -220,7 +214,6 @@ export function useFilteredOrders(
           o.phone,
           o.address,
           o.items,
-          o.group || '',
           o.trackingNumber || '',
           o.paid ? '입금완료' : isUnpaid(o, products) ? '미입금' : '',
           o.amount !== undefined ? String(o.amount) : '',
@@ -230,5 +223,5 @@ export function useFilteredOrders(
         return hay.includes(q);
       })
       .sort(statusFilter === '완료' ? compareOrdersNewest : compareOrders);
-  }, [orders, statusFilter, sourceFilter, query, period, products]);
+  }, [orders, statusFilter, query, period, products]);
 }

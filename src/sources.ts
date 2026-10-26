@@ -155,3 +155,12 @@ export function buildSourceFilterOptions(
     .sort((a, b) => a.localeCompare(b, 'ko'));
   return ['전체', ...managed, ...extras];
 }
+
+/** 경로 기능 제거 후: 닉네임(가져오기 group)을 이름 앞에 붙이고 group 은 비움 */
+export function applyNickname(partials: Partial<Order>[]): Partial<Order>[] {
+  return applyOrderSource(partials, '\u0000').map((o) => {
+    const r = { ...o };
+    delete r.group;
+    return r;
+  });
+}

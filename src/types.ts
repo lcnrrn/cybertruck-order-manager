@@ -14,6 +14,16 @@ export interface Shipment {
   registeredAt?: number;
   receiptNo?: string;
   trackingNumber?: string;
+  /** 우체국 요금(원) — 봇이 접수/예약조회에서 채움 (매출 화면 택배비) */
+  fee?: number;
+  /** 사전결제(카드) 여부 — 봇이 기록 */
+  prepaid?: boolean;
+  /** 발송안내 문자 보냄 체크 */
+  smsSent?: boolean;
+  smsSentAt?: number;
+  /** 배달 완료 (봇이 우체국 배송조회로 채움, 한 번 true면 유지) */
+  delivered?: boolean;
+  deliveredAt?: number;
   updatedAt: number;
 }
 

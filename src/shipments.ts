@@ -35,6 +35,10 @@ export function parseShipments(raw: unknown): Shipment[] | undefined {
     const ra = n(s.registeredAt); if (ra) sh.registeredAt = ra;
     const rn = str(s.receiptNo); if (rn) sh.receiptNo = rn;
     const tn = str(s.trackingNumber); if (tn) sh.trackingNumber = tn;
+    if (s.prepaid === true) sh.prepaid = true;
+    const fee = n(s.fee); if (fee !== undefined && fee >= 0) sh.fee = fee;
+    if (s.smsSent === true) { sh.smsSent = true; const t = n(s.smsSentAt); if (t) sh.smsSentAt = t; }
+    if (s.delivered === true) { sh.delivered = true; const t = n(s.deliveredAt); if (t) sh.deliveredAt = t; }
     out.push(sh);
   }
   return out.length ? out.sort((a, b) => a.no - b.no || a.requestedAt - b.requestedAt) : undefined;
@@ -51,6 +55,10 @@ function mergeOne(a: Shipment, b: Shipment): Shipment {
   if (!out.trackingNumber && lose.trackingNumber) out.trackingNumber = lose.trackingNumber;
   if (!out.receiptNo && lose.receiptNo) out.receiptNo = lose.receiptNo;
   if (!out.registeredAt && lose.registeredAt && out.postStatus === 'registered') out.registeredAt = lose.registeredAt;
+  if (out.fee === undefined && lose.fee !== undefined) out.fee = lose.fee;
+  if (!out.prepaid && lose.prepaid) out.prepaid = true;
+  // 배달 완료는 한 번 true면 유지 (봇 기록이 앱의 옛 값에 지워지지 않게)
+  if (!out.delivered && lose.delivered) { out.delivered = true; if (lose.deliveredAt) out.deliveredAt = lose.deliveredAt; }
   return out;
 }
 
@@ -164,4 +172,32 @@ export function pendingShipmentCount(orders: Order[]): number {
 
 export function shipmentLabel(s: Shipment): string {
   return Object.entries(s.items).map(([k, q]) => `${k}×${q}`).join(', ');
+}
+
+/** 발송안내 문자 보냄 체크/해제 */
+export function setShipmentSms(o: Order, shipId: string, sent: boolean, now = Date.now()): Order | null {
+  const s = o.shipments?.find((x) => x.id === shipId);
+  if (!s) return null;
+  return {
+    ...o,
+    shipments: o.shipments!.map((x) => {
+      if (x.id !== shipId) return x;
+      const n: Shipment = { ...x, updatedAt: now };
+      if (sent) { n.smsSent = true; n.smsSentAt = now; } else { delete n.smsSent; delete n.smsSentAt; }
+      return n;
+    }),
+    updatedAt: now,
+  };
+}
+
+/** 송장 있는 접수 완료 발송건 중 문자 안 보낸 것 */
+export function smsPendingShipments(o: Pick<Order, 'shipments'>): Shipment[] {
+  return activeShipments(o).filter((s) => s.postStatus === 'registered' && s.trackingNumber && !s.smsSent);
+}
+
+/** 모든 품목이 발송됐고, 송장 있는 발송건이 전부 배달 완료 */
+export function isFullyDelivered(o: Pick<Order, 'shipments'>, progress: { key: string; qty: number }[]): boolean {
+  if (!isFullyShipped(o, progress)) return false;
+  const reg = activeShipments(o).filter((s) => s.postStatus === 'registered' && s.trackingNumber);
+  return reg.length > 0 && reg.every((s) => s.delivered);
 }
