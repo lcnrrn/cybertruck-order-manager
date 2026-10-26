@@ -6,15 +6,14 @@ import {
   joinItems,
   parseItemsAgainstCatalog,
 } from '../products';
-import { applyOrderSource } from '../sources';
-import { SourcePicker } from './SourcePicker';
+import { applyNickname } from '../sources';
 
 type Tab = 'naver' | 'reminders';
 
 interface Props {
   onImport: (partials: Partial<Order>[]) => number;
   onClose: () => void;
-  sources: string[];
+  sources?: string[];
 }
 
 
@@ -29,7 +28,7 @@ function alignItemsToCatalog(partials: Partial<Order>[]): Partial<Order>[] {
   });
 }
 
-export function ImportModal({ onImport, onClose, sources }: Props) {
+export function ImportModal({ onImport, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('naver');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
@@ -37,7 +36,6 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   /** Default 기타 (or empty); user must pick — no longer 네이버 폼. */
-  const [source, setSource] = useState('기타');
 
   const reminderPreview = useMemo(
     () => alignItemsToCatalog(parseReminderText(text)),
@@ -45,8 +43,8 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
   );
   const rawPreview = tab === 'naver' ? fileOrders : reminderPreview;
   const preview = useMemo(
-    () => (source.trim() ? applyOrderSource(rawPreview, source.trim()) : rawPreview),
-    [rawPreview, source],
+    () => applyNickname(rawPreview),
+    [rawPreview],
   );
 
   function switchTab(next: Tab) {
@@ -85,12 +83,8 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
       );
       return;
     }
-    if (!source.trim()) {
-      window.alert('주문 경로를 선택하거나 입력해 주세요.');
-      return;
-    }
-    const n = onImport(applyOrderSource(rawPreview, source.trim()));
-    window.alert(`${n}건을 가져왔습니다. (${source.trim()})`);
+    const n = onImport(applyNickname(rawPreview));
+    window.alert(`${n}건을 가져왔습니다.`);
     onClose();
   }
 
@@ -118,16 +112,6 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
           리마인더 붙여넣기
         </button>
       </div>
-
-      <fieldset className="field source-field">
-        <legend>주문 경로 *</legend>
-        <SourcePicker
-          value={source}
-          onChange={setSource}
-          sources={sources}
-          required
-        />
-      </fieldset>
 
       {tab === 'naver' ? (
         <>
@@ -173,13 +157,11 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
         <div className="import-preview">
           <strong>
             미리보기 {preview.length}건
-            {source.trim() ? ` · ${source.trim()}` : ''}
           </strong>
           <ul>
             {preview.slice(0, 5).map((p, i) => (
               <li key={i}>
                 {p.name} · {p.items || '(내용없음)'} · {p.phone || '(번호없음)'}
-                {p.group ? ` · [${p.group}]` : ''}
               </li>
             ))}
             {preview.length > 5 && <li>…외 {preview.length - 5}건</li>}
@@ -195,7 +177,7 @@ export function ImportModal({ onImport, onClose, sources }: Props) {
           type="button"
           className="btn btn-primary"
           onClick={handleImport}
-          disabled={parsing || preview.length === 0 || !source.trim()}
+          disabled={parsing || preview.length === 0}
         >
           {preview.length > 0 ? `${preview.length}건 가져오기` : '가져오기'}
         </button>

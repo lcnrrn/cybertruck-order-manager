@@ -7,7 +7,6 @@ import {
   parseItemsAgainstCatalog,
   type Product,
 } from '../products';
-import { SourcePicker } from './SourcePicker';
 import { autoOrderAmount, formatWon, orderGrams } from '../production';
 import { orderSlots, swatchOf, typeLabel, type FilamentState } from '../filament';
 
@@ -44,7 +43,7 @@ interface Props {
   initial?: Order | null;
   onSubmit: (values: OrderFormValues) => void;
   onCancel: () => void;
-  sources: string[];
+  sources?: string[];
   products: Product[];
   filament?: FilamentState;
 }
@@ -66,7 +65,6 @@ export function OrderForm({
   initial,
   onSubmit,
   onCancel,
-  sources,
   products,
   filament,
 }: Props) {
@@ -445,15 +443,6 @@ export function OrderForm({
           autoComplete="tel"
         />
       </label>
-
-      <fieldset className="field source-field">
-        <legend>주문 경로</legend>
-        <SourcePicker
-          value={values.group}
-          onChange={(v) => set('group', v)}
-          sources={sources}
-        />
-      </fieldset>
 
       <label className="field">
         <span>등기번호 (송장)</span>

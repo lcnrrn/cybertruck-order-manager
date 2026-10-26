@@ -207,7 +207,7 @@ export function TrackingRegisterModal({ orders, onApply, onClose }: Props) {
                         ).map((o) => (
                           <option key={o.id} value={o.id}>
                             {o.name}
-                            {o.group ? ` · ${o.group}` : ''}
+                            
                             {o.trackingNumber ? ' · 송장있음' : ''}
                             {` · ${o.status}`}
                           </option>

@@ -6,7 +6,6 @@ import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
 import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
-import { getSourceColor } from '../sources';
 import { PayBadge } from './PayBadge';
 import { formatWon, orderAmount, orderItemProgress, progressTotals } from '../production';
 
@@ -71,19 +70,6 @@ export function OrderCard({
             {order.priority ? '★' : '☆'}
           </button>
         </div>
-        {order.group ? (
-          <span
-            className="order-group order-source-badge"
-            title="주문 경로"
-            style={{
-              background: getSourceColor(order.group).bg,
-              borderColor: getSourceColor(order.group).border,
-              color: getSourceColor(order.group).text,
-            }}
-          >
-            {order.group}
-          </span>
-        ) : null}
       </header>
 
       <div className="order-body">
@@ -175,6 +161,8 @@ export function OrderCard({
                   {sh.postStatus === 'registered'
                     ? `✅ 접수 완료${sh.trackingNumber ? ` · 송장 ${sh.trackingNumber}` : sh.receiptNo ? ` · ${sh.receiptNo}` : ''}`
                     : '📮 전송 대기'}
+                  {sh.delivered ? <span className="ship-flag">🏠 배달완료{sh.deliveredAt ? ` ${new Date(sh.deliveredAt).getMonth() + 1}/${new Date(sh.deliveredAt).getDate()}` : ''}</span> : null}
+                  {sh.trackingNumber ? <span className="ship-flag">{sh.smsSent ? '💬 문자 보냄' : '💬 문자 전'}</span> : null}
                 </span>
                 {sh.postStatus === 'requested' ? (
                   <button type="button" className="btn-icon ship-cancel" aria-label={`${sh.no}차 전송 취소`}
