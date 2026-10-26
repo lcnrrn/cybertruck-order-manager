@@ -8,6 +8,8 @@ export interface Shipment {
   /** {제품명: 수량} */
   items: Record<string, number>;
   postStatus: PostStatus;
+  /** 접수 방식: counter=창구(기본), visit=방문(집 픽업) */
+  mode?: 'counter' | 'visit';
   requestedAt: number;
   registeredAt?: number;
   receiptNo?: string;

@@ -460,10 +460,10 @@ export default function App() {
       if (target) updateOrder(id, { priority: !target.priority });
     },
     onItemDone: (id: string, key: string, count: number) => setItemDone(id, key, count),
-    onShip: (id: string, items: Record<string, number>) => {
+    onShip: (id: string, items: Record<string, number>, mode: 'counter' | 'visit' = 'counter') => {
       const names = products.map((p) => p.name);
-      transformOrder(id, (o) => addShipment(o, items, orderItemProgress(o, names)));
-      showToast('📮 우체국 전송 대기에 올렸어요');
+      transformOrder(id, (o) => addShipment(o, items, orderItemProgress(o, names), Date.now(), mode));
+      showToast(mode === 'visit' ? '🚚 방문 접수 대기에 올렸어요' : '🏤 창구 접수 대기에 올렸어요');
     },
     onCancelShip: (id: string, shipId: string) => {
       transformOrder(id, (o) => cancelShipment(o, shipId));

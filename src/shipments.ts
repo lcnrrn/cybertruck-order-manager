@@ -31,6 +31,7 @@ export function parseShipments(raw: unknown): Shipment[] | undefined {
       requestedAt: n(s.requestedAt) || 0,
       updatedAt: n(s.updatedAt) || n(s.requestedAt) || 0,
     };
+    if (s.mode === 'visit' || s.mode === 'counter') sh.mode = s.mode;
     const ra = n(s.registeredAt); if (ra) sh.registeredAt = ra;
     const rn = str(s.receiptNo); if (rn) sh.receiptNo = rn;
     const tn = str(s.trackingNumber); if (tn) sh.trackingNumber = tn;
@@ -100,6 +101,7 @@ export function addShipment(
   want: Record<string, number>,
   progress: { key: string; done: number }[],
   now = Date.now(),
+  mode: 'counter' | 'visit' = 'counter',
 ): Order | null {
   const avail = shippableItems(o, progress);
   const items: Record<string, number> = {};
@@ -110,7 +112,7 @@ export function addShipment(
   if (!Object.keys(items).length) return null;
   const all = o.shipments || [];
   const no = activeShipments(o).reduce((m, s) => Math.max(m, s.no), 0) + 1;
-  const sh: Shipment = { id: newId(), no, items, postStatus: 'requested', requestedAt: now, updatedAt: now };
+  const sh: Shipment = { id: newId(), no, items, postStatus: 'requested', mode, requestedAt: now, updatedAt: now };
   return { ...o, shipments: [...all, sh], updatedAt: now };
 }
 
