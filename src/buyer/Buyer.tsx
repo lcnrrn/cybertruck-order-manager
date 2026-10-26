@@ -219,12 +219,12 @@ function LookupPage() {
             )}
             <div className="b-badges">
               <span className={o.paid ? 'b-badge ok' : 'b-badge'}>{o.paid ? '입금 확인' : '입금 전'}</span>
-              <span className="b-badge">{st >= 4 ? '발송' : o.status}{st < 4 && o.shipments.some((sh) => sh.registered || sh.trackingNumber) ? ' · 일부 발송' : ''}</span>
+              <span className="b-badge">{st >= 4 ? (o.shipments.length > 0 && o.shipments.filter((sh) => sh.trackingNumber).every((sh) => sh.delivered) && o.shipments.some((sh) => sh.delivered) ? '배달완료' : '발송') : o.status}{st < 4 && o.shipments.some((sh) => sh.registered || sh.trackingNumber) ? ' · 일부 발송' : ''}</span>
             </div>
             <ol className="b-steps">{STEPS.map((s, i) => <li key={s} className={i <= st ? 'on' : ''}>{s}</li>)}</ol>
             {shipped.map((sh) => (
               <div key={sh.no} className="b-ship">
-                <div className="b-row"><b>📦 {sh.no}차 발송</b>{sh.at ? <span className="b-muted b-small">{new Date(sh.at).toLocaleDateString('ko-KR')}</span> : null}</div>
+                <div className="b-row"><b>📦 {sh.no}차 발송{sh.delivered ? ' · 🏠 배달완료' : ''}</b>{sh.at ? <span className="b-muted b-small">{new Date(sh.at).toLocaleDateString('ko-KR')}</span> : null}</div>
                 <div className="b-small">{Object.entries(sh.items).map(([k, v]) => `${k}${v > 1 ? ` ${v}개` : ''}`).join(' · ')}</div>
                 {sh.trackingNumber ? (
                   <a className="b-track" href={epostTrackUrl(sh.trackingNumber)} target="_blank" rel="noreferrer">우체국 {sh.trackingNumber} <span>배송조회 ›</span></a>

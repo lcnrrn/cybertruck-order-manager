@@ -12,7 +12,7 @@ export async function submitOrder(b: SubmitBody): Promise<{ ok: boolean; error?:
   return r.json();
 }
 
-export interface LookupShipment { no: number; items: Record<string, number>; trackingNumber: string | null; registered: boolean; at?: number | null }
+export interface LookupShipment { no: number; items: Record<string, number>; trackingNumber: string | null; registered: boolean; at?: number | null; delivered?: boolean; deliveredAt?: number | null }
 export interface LookupOrder {
   no: string; createdAt: number | null; items: string[]; status: string; paid: boolean;
   amount: number | null; itemsRaw?: string; done?: Record<string, number>; trackingNumber: string | null; shipments: LookupShipment[];

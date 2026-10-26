@@ -148,7 +148,7 @@ function doGet(e) {
       amount: isNaN(amount) ? null : amount,
       trackingNumber: String(r[10] || '') || null,
       shipments: (x.sh || []).filter(function (s) { return s && s.postStatus !== 'cancelled'; }).map(function (s) {
-        return { no: s.no, items: s.items || {}, at: s.registeredAt || s.requestedAt || null, trackingNumber: s.trackingNumber || null, registered: s.postStatus === 'registered' };
+        return { no: s.no, items: s.items || {}, at: s.registeredAt || s.requestedAt || null, trackingNumber: s.trackingNumber || null, registered: s.postStatus === 'registered', delivered: s.delivered === true, deliveredAt: s.deliveredAt || null };
       }),
     });
   });
