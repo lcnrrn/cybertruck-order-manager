@@ -483,3 +483,35 @@ export function canPushLocalOverRemote(
   }
   return { ok: true };
 }
+
+/**
+ * 지운 주문(deletedOrders 에 있고, 삭제 뒤 다시 고쳐지지 않은 것)의 시트 행을 실제로 지움.
+ * 지우기 직전 A 열을 다시 읽어 id 로 행 번호를 찾고, 아래 행부터 지워서 다른 행 번호가 밀리지 않게 함.
+ * 한 번에 최대 5행, 지운 뒤 다시 읽어서 확인.
+ */
+export async function purgeDeletedRows(accessToken: string, ids: string[]): Promise<number> {
+  const want = Array.from(new Set(ids.filter((x) => x && !isSampleOrderId(x)))).slice(0, 5);
+  if (!want.length) return 0;
+  const spreadsheetId = sheetIdOrThrow();
+  const metaRes = await sheetsFetch(accessToken, `${spreadsheetId}?fields=sheets.properties(sheetId,title)`);
+  if (!metaRes.ok) throw new Error(`시트 정보 읽기 실패: ${await readError(metaRes)}`);
+  const meta = (await metaRes.json()) as { sheets?: { properties?: { sheetId?: number; title?: string } }[] };
+  const gid = meta.sheets?.find((s) => s.properties?.title === ORDERS_SHEET_NAME)?.properties?.sheetId;
+  if (gid === undefined) return 0;
+  const { rows } = await readIdRows(accessToken, spreadsheetId);
+  const targets: number[] = [];
+  for (const id of want) for (const n of rows.get(id) || []) if (n > 1) targets.push(n);
+  if (!targets.length) return 0;
+  targets.sort((a, b) => b - a); // 아래 행부터
+  const res = await sheetsFetch(accessToken, `${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({
+      requests: targets.map((n) => ({ deleteDimension: { range: { sheetId: gid, dimension: 'ROWS', startIndex: n - 1, endIndex: n } } })),
+    }),
+  });
+  if (!res.ok) throw new Error(`지운 주문 행 정리 실패: ${await readError(res)}`);
+  const after = await readIdRows(accessToken, spreadsheetId);
+  const left = want.filter((id) => after.rows.has(id));
+  if (left.length) throw new Error(`지운 주문 행이 아직 남아 있어요: ${left.join(', ')}`);
+  return targets.length;
+}

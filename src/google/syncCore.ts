@@ -17,7 +17,7 @@ export function isAuthError(msg: string): boolean {
   return /\b401\b|invalid authentication|invalid credentials|expired|UNAUTHENTICATED|Invalid Credentials/i.test(msg);
 }
 
-import { patchOrders, pullOrders } from './sheets';
+import { patchOrders, pullOrders, purgeDeletedRows } from './sheets';
 import { syncSettings } from './settingsSync';
 
 /** 주문 하나의 지문(짧은 해시) */
@@ -147,6 +147,15 @@ export async function pullMergePush(token: string, local: Order[]): Promise<{ me
     }
     await patchOrders(token, write);
     pushed = true;
+  }
+  // 이 기기/다른 기기에서 지운 주문이 시트에 행으로 남아 있으면 그 행만 지움 (삭제 뒤 다시 고쳐진 주문은 제외)
+  const stale = remote.filter((r) => deleted[r.id] && deleted[r.id] >= r.updatedAt).map((r) => r.id);
+  if (stale.length) {
+    try {
+      await purgeDeletedRows(token, stale);
+    } catch (e) {
+      console.warn('purgeDeletedRows', e);
+    }
   }
   saveBase(merged);
   return { merged, pushed, remoteCount: remote.length };
