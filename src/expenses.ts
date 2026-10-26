@@ -20,6 +20,26 @@ export interface Expense {
 export interface ExpenseState {
   items: Expense[];
   categories: string[];
+  /** 통장 잔고 입력 기록 (설정 탭 expenses 행에 같이 저장·동기화) */
+  balances?: BalanceRecord[];
+}
+
+/** 잔고 맞춤 자동 지출 분류 — 금액이 음수면 기타 입금(지출 차감) */
+export const BALANCE_ADJ_CATEGORY = '잔고 맞춤';
+
+export interface BalanceRecord {
+  id: string;
+  /** 입력 시각 (ms) */
+  at: number;
+  /** 실제 통장 잔고(원) */
+  amount: number;
+  /** 입력 당시 누적 입금 합계 / 누적 지출 합계 (다음 입력 때 '그 뒤 기록분' 계산용) */
+  paidTotal: number;
+  expTotal: number;
+  /** 이 입력으로 만든 자동 지출 id */
+  adjId?: string;
+  updatedAt: number;
+  deleted?: boolean;
 }
 
 /** 화면/합계용 지출 한 줄 (필라멘트 구매 포함) */
@@ -51,7 +71,21 @@ export function normalizeExpenses(v: unknown): ExpenseState {
   const cats = Array.isArray(src.categories)
     ? Array.from(new Set(src.categories.filter((c): c is string => typeof c === 'string' && !!c.trim()).map((c) => c.trim())))
     : [];
-  return { items, categories: cats.length ? cats.filter((c) => c !== FILAMENT_CATEGORY) : [...DEFAULT_EXPENSE_CATEGORIES] };
+  const balances: BalanceRecord[] = [];
+  for (const b of Array.isArray(src.balances) ? src.balances : []) {
+    if (!b || typeof b !== 'object' || typeof b.id !== 'string' || !b.id) continue;
+    balances.push({
+      id: b.id,
+      at: Number(b.at) || 0,
+      amount: Number(b.amount) || 0,
+      paidTotal: Number(b.paidTotal) || 0,
+      expTotal: Number(b.expTotal) || 0,
+      ...(typeof b.adjId === 'string' && b.adjId ? { adjId: b.adjId } : {}),
+      updatedAt: Number(b.updatedAt) || 0,
+      ...(b.deleted ? { deleted: true } : {}),
+    });
+  }
+  return { items, ...(balances.length ? { balances } : {}), categories: cats.length ? cats.filter((c) => c !== FILAMENT_CATEGORY) : [...DEFAULT_EXPENSE_CATEGORIES] };
 }
 
 /** id별로 updatedAt이 큰 쪽 우선 (같으면 a 우선). 삭제 표시도 그대로 전파 */
@@ -67,7 +101,8 @@ export function mergeById<T extends { id?: string; updatedAt?: number }>(a: T[],
 
 export function mergeExpenseStates(local: ExpenseState, remote: ExpenseState, localNewer: boolean): ExpenseState {
   const items = mergeById(remote.items, local.items).sort((x, y) => x.at - y.at);
-  return { items, categories: localNewer ? local.categories : remote.categories };
+  const balances = mergeById(remote.balances || [], local.balances || []).sort((x, y) => x.at - y.at);
+  return { items, ...(balances.length ? { balances } : {}), categories: localNewer ? local.categories : remote.categories };
 }
 
 export function loadExpenses(): ExpenseState {
@@ -96,7 +131,7 @@ export function newExpenseId(): string {
 /** 수동 지출 + 금액이 입력된 필라멘트 구매 → 지출 목록 (최신순) */
 export function expenseLines(exp: ExpenseState, fil: Pick<FilamentState, 'entries' | 'types'> | null): ExpenseLine[] {
   const out: ExpenseLine[] = exp.items
-    .filter((x) => !x.deleted && x.amount > 0)
+    .filter((x) => !x.deleted && (x.amount > 0 || (x.category === BALANCE_ADJ_CATEGORY && x.amount !== 0)))
     .map((x) => ({ id: x.id, at: x.at, category: x.category, note: x.note, amount: x.amount }));
   for (const e of fil?.entries || []) {
     if (e.deleted || e.kind !== 'purchase' || !(e.cost && e.cost > 0)) continue;
@@ -127,4 +162,13 @@ export function expenseTotals(lines: ExpenseLine[]): { total: number; byCategory
     return b[1] - a[1];
   });
   return { total: lines.reduce((s, l) => s + l.amount, 0), byCategory };
+}
+
+export function lastBalance(s: ExpenseState): BalanceRecord | null {
+  const live = (s.balances || []).filter((b) => !b.deleted).sort((a, b) => b.at - a.at);
+  return live[0] || null;
+}
+
+export function newBalanceId(): string {
+  return `bal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }

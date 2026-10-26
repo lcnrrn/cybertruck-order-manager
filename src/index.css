@@ -1482,3 +1482,9 @@ html, body { overflow-x: clip; }
 .ship-sms-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ship-sms-check { display: flex; gap: 4px; align-items: center; font-weight: 600; margin-left: auto; }
 .ship-line .ship-flag { font-size: 11px; margin-left: 4px; }
+
+/* 통장 잔고 */
+.balance-box { border: 1px solid #ddd; border-radius: 12px; padding: 10px; margin: 12px 0; background: #fff; }
+.balance-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.balance-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.balance-preview { background: #f5f6f8; border-radius: 8px; padding: 8px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }

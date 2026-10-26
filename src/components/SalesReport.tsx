@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FilamentState } from '../filament';
 import { SETTINGS_APPLIED_EVENT } from '../settingsMeta';
 import {
+  BALANCE_ADJ_CATEGORY,
   FILAMENT_CATEGORY,
+  lastBalance,
+  newBalanceId,
   expenseLines,
   expenseTotals,
   inBounds,
@@ -134,6 +137,53 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
   }, [exp, filament, period]);
   const profit = data.total - ex.total;
 
+  // ── 통장 잔고 맞춤 ──
+  const paidAll = useMemo(() => orders.filter((o) => o.paid).reduce((t, o) => t + orderAmount(o, products), 0), [orders, products]);
+  const expAll = useMemo(() => expenseTotals(expenseLines(exp, filament ?? null)).total, [exp, filament]);
+  const lastBal = lastBalance(exp);
+  const [balInput, setBalInput] = useState<string | null>(null);
+  const balActual = balInput !== null ? Number(balInput.replace(/[^\d-]/g, '')) : NaN;
+  const balPreview = useMemo(() => {
+    if (balInput === null || !balInput.replace(/[^\d]/g, '') || !Number.isFinite(balActual)) return null;
+    if (!lastBal) return { first: true as const, actual: balActual };
+    const income = paidAll - lastBal.paidTotal;
+    const spent = expAll - lastBal.expTotal;
+    const expected = lastBal.amount + income - spent;
+    return { first: false as const, actual: balActual, income, spent, expected, diff: balActual - expected };
+  }, [balInput, balActual, lastBal, paidAll, expAll]);
+  const saveBalance = () => {
+    if (!balPreview) return;
+    const now = Date.now();
+    const items = [...exp.items];
+    let adjId: string | undefined;
+    let expTotal = expAll;
+    if (!balPreview.first && balPreview.diff !== 0) {
+      adjId = newExpenseId();
+      const out = -balPreview.diff; // 양수 = 지출, 음수 = 기타 입금
+      items.push({
+        id: adjId,
+        at: now,
+        category: BALANCE_ADJ_CATEGORY,
+        note: out > 0 ? '통장 잔고 맞춤 (자동)' : '통장 잔고 맞춤 (자동, 기타 입금)',
+        amount: out,
+        updatedAt: now,
+      });
+      expTotal += out;
+    }
+    const rec = { id: newBalanceId(), at: now, amount: balPreview.actual, paidTotal: paidAll, expTotal, ...(adjId ? { adjId } : {}), updatedAt: now };
+    commit({ ...exp, items, balances: [...(exp.balances || []), rec] });
+    setBalInput(null);
+  };
+  const undoBalance = () => {
+    if (!lastBal || !window.confirm('마지막 잔고 입력을 취소할까? (자동으로 만든 잔고 맞춤 기록도 같이 지워져)')) return;
+    const now = Date.now();
+    commit({
+      ...exp,
+      items: exp.items.map((x) => (x.id === lastBal.adjId ? { ...x, deleted: true, updatedAt: now } : x)),
+      balances: (exp.balances || []).map((b) => (b.id === lastBal.id ? { ...b, deleted: true, updatedAt: now } : b)),
+    });
+  };
+
   const openNew = () =>
     setDraft({ date: toDateInput(Date.now()), category: exp.categories[0] || '부속품', note: '', amount: '' });
   const openLine = (l: ExpenseLine) => {
@@ -142,6 +192,12 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
       return;
     }
     const it = exp.items.find((x) => x.id === l.id);
+    if (it && it.category === BALANCE_ADJ_CATEGORY) {
+      if (window.confirm(`${it.note} ${formatWon(it.amount)} 기록을 삭제할까?`)) {
+        commit({ ...exp, items: exp.items.map((x) => (x.id === it.id ? { ...x, deleted: true, updatedAt: Date.now() } : x)) });
+      }
+      return;
+    }
     if (it) setDraft({ id: it.id, date: toDateInput(it.at), category: it.category, note: it.note, amount: String(it.amount) });
   };
   const saveDraft = () => {
@@ -196,6 +252,45 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
         <div className="report-card bad"><span>미입금</span><strong>{formatWon(data.unpaidSum)}</strong></div>
         <div className="report-card bad"><span>지출</span><strong>{formatWon(ex.total)}</strong></div>
         <div className={`report-card ${profit >= 0 ? 'ok' : 'bad'}`}><span>순이익 (매출 − 지출)</span><strong>{formatWon(profit)}</strong></div>
+      </div>
+
+      <div className="balance-box">
+        <div className="balance-head">
+          <b>💰 통장 잔고</b>
+          {lastBal ? (
+            <span>{formatWon(lastBal.amount)} · {new Date(lastBal.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 입력</span>
+          ) : <span className="hint">아직 입력 안 함</span>}
+        </div>
+        {balInput === null ? (
+          <div className="form-actions">
+            {lastBal && <button type="button" className="btn btn-ghost" onClick={undoBalance}>마지막 입력 취소</button>}
+            <button type="button" className="btn btn-primary" onClick={() => setBalInput('')}>💰 통장 잔고 입력</button>
+          </div>
+        ) : (
+          <div className="balance-form">
+            <input className="source-custom-input" inputMode="numeric" autoFocus value={balInput} onChange={(e) => setBalInput(e.target.value)} placeholder="지금 실제 통장 잔고 (원)" aria-label="실제 통장 잔고" />
+            {balPreview && (balPreview.first ? (
+              <p className="hint">첫 입력이라 기준 잔고로만 저장해요 (자동 기록 없음). 다음부터 이 금액 + 그 뒤 입금 − 그 뒤 지출과 비교해요.</p>
+            ) : (
+              <div className="balance-preview">
+                <div>지난 잔고 <b>{formatWon(lastBal!.amount)}</b></div>
+                <div>+ 그 뒤 입금 <b>{formatWon(balPreview.income)}</b> − 그 뒤 지출 <b>{formatWon(balPreview.spent)}</b></div>
+                <div>= 예상 잔고 <b>{formatWon(balPreview.expected)}</b> · 실제 <b>{formatWon(balPreview.actual)}</b></div>
+                <div className={balPreview.diff < 0 ? 'report-warn' : ''}>
+                  {balPreview.diff === 0
+                    ? '딱 맞아요 👍 잔고만 저장해요'
+                    : balPreview.diff < 0
+                      ? `차이 ${formatWon(balPreview.diff)} → 지출 「통장 잔고 맞춤 (자동)」 ${formatWon(-balPreview.diff)} 기록`
+                      : `차이 +${formatWon(balPreview.diff)} → 「통장 잔고 맞춤 (자동, 기타 입금)」 ${formatWon(balPreview.diff)} 기록 (지출에서 빠짐)`}
+                </div>
+              </div>
+            ))}
+            <div className="form-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setBalInput(null)}>취소</button>
+              <button type="button" className="btn btn-primary" disabled={!balPreview} onClick={saveBalance}>저장</button>
+            </div>
+          </div>
+        )}
       </div>
 
       <h3 className="report-h expense-h">
