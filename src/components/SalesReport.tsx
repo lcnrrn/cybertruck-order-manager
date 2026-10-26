@@ -64,7 +64,9 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
     });
     let total = 0;
     let paid = 0;
-    const months = new Map<string, { count: number; total: number; paid: number }>();
+    const months = new Map<string, { count: number; total: number; paid: number; ship: number; parcels: number }>();
+    let shipFee = 0;
+    let parcels = 0;
     const prod = new Map<string, { qty: number; amount: number }>();
     const unpaid: { order: Order; amount: number }[] = [];
     const names = products.map((p) => p.name);
@@ -76,7 +78,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
       if (o.paid) paid += amt;
       else if (amt > 0) unpaid.push({ order: o, amount: amt });
       const mk = monthKey(orderTimestamp(o.createdAt, o.updatedAt));
-      const m = months.get(mk) ?? { count: 0, total: 0, paid: 0 };
+      const m = months.get(mk) ?? { count: 0, total: 0, paid: 0, ship: 0, parcels: 0 };
       m.count += 1;
       m.total += amt;
       if (o.paid) m.paid += amt;
@@ -93,10 +95,25 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
         prod.set(p.name, r);
       }
     }
+    // 택배비: 접수 완료 발송건의 우체국 요금(fee) — 접수일 기준 월
+    for (const o of orders) {
+      for (const sh of o.shipments || []) {
+        if (sh.postStatus !== 'registered') continue;
+        const ts = sh.registeredAt || sh.requestedAt;
+        if (bounds && (ts < bounds[0] || ts > bounds[1])) continue;
+        const mk = monthKey(ts);
+        const m = months.get(mk) ?? { count: 0, total: 0, paid: 0, ship: 0, parcels: 0 };
+        m.parcels += 1;
+        m.ship += sh.fee || 0;
+        months.set(mk, m);
+        parcels += 1;
+        shipFee += sh.fee || 0;
+      }
+    }
     const monthRows = [...months.entries()].sort((a, b) => b[0].localeCompare(a[0]));
     const prodRows = [...prod.entries()].sort((a, b) => b[1].amount - a[1].amount || b[1].qty - a[1].qty);
     unpaid.sort((a, b) => a.order.createdAt - b.order.createdAt);
-    return { serviceQty, serviceValue, count: list.length, total, paid, unpaidSum: total - paid, unpaid, monthRows, prodRows, list };
+    return { shipFee, parcels, serviceQty, serviceValue, count: list.length, total, paid, unpaidSum: total - paid, unpaid, monthRows, prodRows, list };
   }, [orders, products, period]);
 
   const [exp, setExp] = useState<ExpenseState>(() => loadExpenses());
@@ -270,10 +287,15 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
               <span>{k.replace('-', '년 ')}월 · {m.count}건</span>
               <span>{formatWon(m.total)}{m.total - m.paid > 0 ? ` (미입금 ${formatWon(m.total - m.paid)})` : ''}</span>
             </div>
+            {m.parcels ? <div className="report-bar-label hint"><span>📦 발송 {m.parcels}건</span><span>택배비 {m.ship ? formatWon(m.ship) : '금액 미기록'}</span></div> : null}
             <div className="report-bar"><i style={{ width: `${(m.total / maxMonth) * 100}%` }} /><b style={{ width: `${(m.paid / maxMonth) * 100}%` }} /></div>
           </li>
         ))}
       </ul>
+
+      {data.parcels > 0 && (
+        <p className="hint">📦 이 기간 발송 {data.parcels}건 · 택배비 {formatWon(data.shipFee)} (우체국 접수 때 기록된 요금 기준, 매출 − 택배비 = {formatWon(data.total - data.shipFee)})</p>
+      )}
 
       <h3 className="report-h">제품별 판매</h3>
       <ul className="report-bars">

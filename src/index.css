@@ -1468,3 +1468,17 @@ html, body { overflow-x: clip; }
 }
 .ptr-indicator span { font-size: 22px; line-height: 1; }
 .ptr-indicator small { font-size: 12px; margin-top: 2px; }
+
+/* 발송 문자 보내기 */
+.ship-sms-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
+.ship-sms-showsent { font-size: 13px; display: flex; gap: 4px; align-items: center; }
+.ship-sms-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.ship-sms-item { border: 1px solid #ddd; border-radius: 12px; padding: 10px; background: #fff; }
+.ship-sms-item.sent { opacity: .55; }
+.ship-sms-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 14px; }
+.ship-sms-no, .ship-sms-items { font-size: 12px; color: #666; }
+.ship-sms-body { white-space: pre-wrap; font: inherit; font-size: 13px; background: #f5f6f8; border-radius: 8px; padding: 8px; margin: 6px 0; }
+.ship-sms-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ship-sms-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+.ship-sms-check { display: flex; gap: 4px; align-items: center; font-weight: 600; margin-left: auto; }
+.ship-line .ship-flag { font-size: 11px; margin-left: 4px; }

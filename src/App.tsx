@@ -6,22 +6,19 @@ import {
   PERIOD_FILTER_KEY,
   STATUS_FILTER_KEY,
 } from './types';
-import type { SourceFilter } from './sources';
-import { buildSourceFilterOptions, getSources, setSources } from './sources';
 import { getProducts, setProducts, type Product } from './products';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
-import { addShipment, attachTracking, cancelShipment, isFullyShipped, pendingShipmentCount } from './shipments';
+import { addShipment, attachTracking, cancelShipment, isFullyDelivered, isFullyShipped, pendingShipmentCount, setShipmentSms, smsPendingShipments } from './shipments';
+import { ShipSmsPanel } from './components/ShipSmsPanel';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
 import { StatusFilterBar } from './components/StatusFilter';
-import { SourceFilterBar } from './components/SourceFilter';
 import { PeriodFilterBar } from './components/PeriodFilter';
 import { Toast } from './components/Toast';
 import { GoogleSyncBar } from './components/GoogleSyncBar';
 import { GoogleSettings } from './components/GoogleSettings';
-import { SourceManager } from './components/SourceManager';
 import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
 import { ProductionSummary } from './components/ProductionSummary';
@@ -41,13 +38,12 @@ import { LockedBanner, SyncGate } from './components/SyncGate';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAppUpdate } from './hooks/useAppUpdate';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'sources' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost';
+type Sheet = 'none' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost' | 'shipsms';
 
 const MENU_ITEMS: { id: Sheet; icon: string; label: string }[] = [
   { id: 'import', icon: '📥', label: '가져오기' },
   { id: 'tracking', icon: '📮', label: '송장 등록' },
   { id: 'products', icon: '📦', label: '제품 관리' },
-  { id: 'sources', icon: '🧭', label: '경로 관리' },
   { id: 'sales', icon: '💰', label: '매출 정리' },
   { id: 'filament', icon: '🧵', label: '필라멘트' },
   { id: 'sms', icon: '💬', label: '문자 템플릿' },
@@ -66,8 +62,8 @@ const TABS: { id: Tab; icon: string; label: string; title: string }[] = [
 ];
 const MORE_ITEMS: { id: Sheet; icon: string; label: string; desc: string }[] = [
   { id: 'epost', icon: '📮', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
+  { id: 'shipsms', icon: '💬', label: '발송 문자 보내기', desc: '송장 나온 건 발송안내 문자 모아보기 · 보냄 체크' },
   { id: 'products', icon: '📦', label: '제품 관리', desc: '판매가 · 필라멘트 g · 출력 시간' },
-  { id: 'sources', icon: '🧭', label: '경로 관리', desc: '주문 경로(카페·클럽) 목록' },
   { id: 'sms', icon: '💬', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
   { id: 'tracking', icon: '📮', label: '송장 등록', desc: '우체국 접수증 붙여넣기' },
   { id: 'import', icon: '📥', label: '주문 가져오기', desc: '네이버 폼 · 미리 알림' },
@@ -175,13 +171,11 @@ export default function App() {
   };
   const [postOnly, setPostOnly] = useState(false);
   const [filter, setFilter] = useState<StatusFilter>(loadStatusFilter);
-  const [sourceFilter, setSourceFilter] = useState<SourceFilter>('전체');
   const [period, setPeriod] = useState<PeriodRange>(loadPeriodFilter);
   const [query, setQuery] = useState('');
   const [sheet, setSheet] = useState<Sheet>('none');
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [sources, setSourcesState] = useState<string[]>(() => getSources());
   const [tab, setTabState] = useState<Tab>(loadTab);
   const scrollByTab = useRef<Partial<Record<Tab, number>>>({});
   const switchTab = useCallback((next: Tab) => {
@@ -246,12 +240,6 @@ export default function App() {
 
   const showToast = useCallback((msg: string) => setToast(msg), []);
 
-  const handleSourcesChange = useCallback((next: string[]) => {
-    if (blocked()) return;
-    setSources(next);
-    setSourcesState(next);
-  }, []);
-
   const handleProductsChange = useCallback((next: Product[]) => {
     if (blocked()) return;
     setProducts(next);
@@ -294,7 +282,7 @@ export default function App() {
     showToast('🔒 최신 내용을 받은 뒤에 수정할 수 있어요');
   };
 
-  const baseFiltered = useFilteredOrders(orders, filter, sourceFilter, query, period, products);
+  const baseFiltered = useFilteredOrders(orders, filter, query, period, products);
   const [productFilter, setProductFilter] = useState<string | null>(null);
   const filtered = useMemo(
     () => (productFilter ? baseFiltered.filter((o) => orderHasProduct(o, productFilter, products)) : baseFiltered),
@@ -330,7 +318,6 @@ export default function App() {
   useEffect(() => {
     const onApplied = () => {
       setProductsState(getProducts());
-      setSourcesState(getSources());
       setFilamentState(loadFilament());
       setEpostReq(loadEpostRequest());
     };
@@ -338,10 +325,6 @@ export default function App() {
     return () => window.removeEventListener(SETTINGS_APPLIED_EVENT, onApplied);
   }, []);
 
-  const sourceOptions = useMemo(
-    () => buildSourceFilterOptions(orders, sources),
-    [orders, sources],
-  );
 
   const empty = emptyMessage(filter, query, orders.length > 0);
 
@@ -471,6 +454,27 @@ export default function App() {
     },
   };
   const postPending = useMemo(() => pendingShipmentCount(orders), [orders]);
+  const smsPending = useMemo(() => orders.reduce((n, o) => n + smsPendingShipments(o).length, 0), [orders]);
+
+  // 봇이 시트에 송장·배달완료를 쓰면: 모든 품목 발송(송장) 또는 전부 배달완료 → 자동 완료 (주문마다 한 번만)
+  useEffect(() => {
+    if (google.locked || google.status === 'syncing') return;
+    const KEY = 'cybertruck-auto-done-v1';
+    let doneIds: string[] = [];
+    try { doneIds = JSON.parse(localStorage.getItem(KEY) || '[]') as string[]; } catch { doneIds = []; }
+    const names = products.map((p) => p.name);
+    const add: string[] = [];
+    for (const o of orders) {
+      if (o.status === '완료' || doneIds.includes(o.id) || !o.shipments?.length) continue;
+      const prog = orderItemProgress(o, names);
+      if (isFullyShipped(o, prog) || isFullyDelivered(o, prog)) add.push(o.id);
+    }
+    if (!add.length) return;
+    try { localStorage.setItem(KEY, JSON.stringify([...doneIds, ...add].slice(-500))); } catch { /* ignore */ }
+    for (const id of add) setStatus(id, '완료');
+    showToast(`📦 발송 끝난 주문 ${add.length}건 자동 완료`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, products, google.locked, google.status]);
 
   const makeSummary = useMemo(() => buildProductionSummary(orders, products), [orders, products]);
   const makeMin = useMemo(() => pendingMinutes(orders, products), [orders, products]);
@@ -536,7 +540,7 @@ export default function App() {
             <span className="tabbar-ico" aria-hidden>{t.icon}</span>
             <span className="tabbar-label">{t.label}</span>
             {t.id === 'orders' && counts.작업중 > 0 ? <span className="tabbar-badge">{counts.작업중}</span> : null}
-            {t.id === 'more' && postPending > 0 ? <span className="tabbar-badge">{postPending}</span> : null}
+            {t.id === 'more' && postPending + smsPending > 0 ? <span className="tabbar-badge">{postPending + smsPending}</span> : null}
           </button>
         ))}
       </nav>
@@ -592,7 +596,6 @@ export default function App() {
             </div>
             <StatusFilterBar value={filter} counts={counts} onChange={setFilter} />
             <PeriodFilterBar value={period} onChange={setPeriod} />
-            <SourceFilterBar options={sourceOptions} value={sourceFilter} onChange={setSourceFilter} />
             <div className="result-meta" aria-live="polite">
               <span className="result-count">
                 {filtered.length}건 표시
@@ -621,6 +624,9 @@ export default function App() {
 
       {tab === 'orders' && (
         <main className="order-list" data-lock-zone>
+          {smsPending > 0 ? (
+            <button type="button" className="btn btn-secondary" style={{ width: '100%', marginBottom: 8 }} onClick={() => setSheet('shipsms')}>💬 송장 나온 {smsPending}건 · 발송 문자 보내기</button>
+          ) : null}
           {filtered.length === 0 ? (
             <div className="empty">
               <p className="empty-title">{empty.title}</p>
@@ -658,6 +664,9 @@ export default function App() {
               <h2 className="section-title">
                 ✅ 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
               </h2>
+              {smsPending > 0 ? (
+                <button type="button" className="btn btn-secondary" style={{ width: '100%', marginBottom: 8 }} onClick={() => setSheet('shipsms')}>💬 발송 문자 보내기 ({smsPending}건)</button>
+              ) : null}
               {postPending > 0 ? (
                 <button type="button" className="btn btn-secondary" style={{ width: '100%', marginBottom: 8 }} onClick={() => setSheet('epost')}>📮 우체국 접수하러 가기 ({postPending}건)</button>
               ) : null}
@@ -721,6 +730,7 @@ export default function App() {
                   <small>{m.desc}</small>
                 </span>
                 {m.id === 'epost' && postPending > 0 ? <span className="more-badge">{postPending}</span> : null}
+                {m.id === 'shipsms' && smsPending > 0 ? <span className="more-badge">{smsPending}</span> : null}
                 <span className="more-caret" aria-hidden>›</span>
               </button>
             ))}
@@ -757,6 +767,14 @@ export default function App() {
                 </div>
               </div>
             )}
+            {sheet === 'shipsms' && (
+              <ShipSmsPanel
+                orders={orders}
+                copyText={copyText}
+                onToggleSent={(id, shipId, sent) => transformOrder(id, (o) => setShipmentSms(o, shipId, sent))}
+                onClose={() => setSheet('none')}
+              />
+            )}
             {sheet === 'epost' && (
               <EpostPanel
                 orders={orders}
@@ -785,7 +803,6 @@ export default function App() {
               <div className="sheet-body">
                 <OrderForm
                   initial={editing}
-                  sources={sources}
                   products={products}
                   filament={filament}
                   onSubmit={handleFormSubmit}
@@ -797,7 +814,7 @@ export default function App() {
               </div>
             )}
             {sheet === 'import' && (
-              <ImportModal onImport={handleImport} onClose={() => setSheet('none')} sources={sources} />
+              <ImportModal onImport={handleImport} onClose={() => setSheet('none')} />
             )}
             {sheet === 'google' && (
               <div className="sheet-body">
@@ -815,13 +832,6 @@ export default function App() {
                   }}
                 />
               </div>
-            )}
-            {sheet === 'sources' && (
-              <SourceManager
-                sources={sources}
-                onChange={handleSourcesChange}
-                onClose={() => setSheet('none')}
-              />
             )}
             {sheet === 'products' && (
               <ProductManager
