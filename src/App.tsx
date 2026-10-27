@@ -38,6 +38,11 @@ import { LockedBanner, SyncGate } from './components/SyncGate';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAppUpdate } from './hooks/useAppUpdate';
 import { Dashboard } from './components/Dashboard';
+import { DepositMatch } from './components/DepositMatch';
+import { PrintQueue } from './components/PrintQueue';
+import { Customers } from './components/Customers';
+import { ProfitPanel } from './components/ProfitPanel';
+import { ShopSettingsPanel } from './components/ShopSettingsPanel';
 import { EmptyArt, BrandLogo } from './ui/Art';
 import {
   ChartColumn,
@@ -47,6 +52,7 @@ import {
   Download,
   Hammer,
   House,
+  Landmark,
   Link,
   Mailbox,
   MessageSquare,
@@ -57,11 +63,13 @@ import {
   RefreshCw,
   Settings,
   Spool,
+  Store,
+  Users,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
-type Sheet = 'none' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost' | 'shipsms';
+type Sheet = 'none' | 'deposit' | 'shop' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost' | 'shipsms';
 
 const MENU_ITEMS: { id: Sheet; icon: LucideIcon; label: string }[] = [
   { id: 'import', icon: Download, label: '가져오기' },
@@ -82,6 +90,7 @@ const ALL_TABS: { id: Tab; icon: LucideIcon; label: string; title: string; hidde
   { id: 'orders', icon: ClipboardList, label: '주문', title: '주문' },
   { id: 'make', icon: Hammer, label: '제작', title: '제작' },
   { id: 'sales', icon: ChartColumn, label: '매출', title: '매출' },
+  { id: 'customers', icon: Users, label: '고객', title: '고객' },
   { id: 'filament', icon: Spool, label: '필라멘트', title: '필라멘트', hidden: true },
   { id: 'more', icon: Settings, label: '더보기', title: '더보기 · 설정' },
 ];
@@ -89,6 +98,8 @@ const TABS = ALL_TABS.filter((t) => !t.hidden);
 const MORE_ITEMS: { id: Sheet; icon: LucideIcon; color: string; label: string; desc: string }[] = [
   { id: 'epost', icon: Mailbox, color: 'linear-gradient(135deg,#f472b6,#be185d)', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
   { id: 'shipsms', icon: MessageSquare, color: 'linear-gradient(135deg,#a78bfa,#6d28d9)', label: '발송 문자 보내기', desc: '송장 나온 건 발송안내 문자 모아보기 · 보냄 체크' },
+  { id: 'deposit', icon: Landmark, color: 'linear-gradient(135deg,#4ade80,#15803d)', label: '입금 확인', desc: '은행 거래내역 붙여넣기 → 미입금 주문 자동 짝찾기' },
+  { id: 'shop', icon: Store, color: 'linear-gradient(135deg,#f9a8d4,#7c3aed)', label: '가게 · 구매자 안내', desc: '입금 계좌 · 주문/조회 링크 · 원가 기준' },
   { id: 'products', icon: Package, color: 'linear-gradient(135deg,#5ee1ff,#2563eb)', label: '제품 관리', desc: '사진 · 판매가 · 필라멘트 g · 출력 시간' },
   { id: 'filament', icon: Spool, color: 'linear-gradient(135deg,#34d399,#047857)', label: '필라멘트 재고', desc: '구매 기록 · 재고 · 종류별 사용량' },
   { id: 'sms', icon: MessageSquareText, color: 'linear-gradient(135deg,#fbbf24,#d97706)', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
@@ -197,6 +208,7 @@ export default function App() {
     if (!blocked()) rawTransformOrder(id, fn);
   };
   const [postOnly, setPostOnly] = useState(false);
+  const [salesView, setSalesView] = useState<'report' | 'profit'>('report');
   const [filter, setFilter] = useState<StatusFilter>(loadStatusFilter);
   const [period, setPeriod] = useState<PeriodRange>(loadPeriodFilter);
   const [query, setQuery] = useState('');
@@ -659,11 +671,6 @@ export default function App() {
             smsPending={smsPending}
             onGo={(t) => switchTab(t)}
             onOpen={(s) => {
-              if (s === 'deposit') {
-                setFilter('미입금');
-                switchTab('orders');
-                return;
-              }
               setSheet(s);
             }}
             onNew={openNew}
@@ -716,6 +723,7 @@ export default function App() {
                   embedded
                 />
               </section>
+              <PrintQueue orders={orders} products={products} onDone={(id, key, count) => setItemDone(id, key, count)} onOpenProducts={() => setSheet('products')} />
               <h2 className="section-title">
                 <Hammer size={17} /> 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
               </h2>
@@ -756,6 +764,15 @@ export default function App() {
 
       {tab === 'sales' && (
         <main className="tab-page embedded-panel" data-lock-zone>
+          <div className="seg-wrap">
+            <div className="seg" role="tablist">
+              <button type="button" data-allow-locked className={salesView === 'report' ? 'on' : ''} onClick={() => setSalesView('report')}>정산 · 입금</button>
+              <button type="button" data-allow-locked className={salesView === 'profit' ? 'on' : ''} onClick={() => setSalesView('profit')}>원가 · 순이익</button>
+            </div>
+          </div>
+          {salesView === 'profit' ? (
+            <ProfitPanel orders={orders} products={products} filament={filament} period={period} onOpenShop={() => setSheet('shop')} />
+          ) : (
           <SalesReport
             filament={filament}
             orders={orders}
@@ -770,6 +787,24 @@ export default function App() {
             }}
             onEdit={(o) => openEdit(o)}
             onClose={() => switchTab('orders')}
+          />
+          )}
+        </main>
+      )}
+
+      {tab === 'customers' && (
+        <main className="tab-page" data-lock-zone>
+          <Customers
+            orders={orders}
+            products={products}
+            copyText={(t, m) => void copyText(t, m)}
+            onSearch={(q) => {
+              setQuery(q);
+              setFilter('전체');
+              setPeriod({ preset: 'all' });
+              setProductFilter(null);
+              switchTab('orders');
+            }}
           />
         </main>
       )}
@@ -841,6 +876,30 @@ export default function App() {
                   void google.syncNow();
                 }}
                 onCancelShip={(id, shipId) => sharedCardProps.onCancelShip(id, shipId)}
+                onOpenSms={() => setSheet('shipsms')}
+                onClose={() => setSheet('none')}
+              />
+            )}
+            {sheet === 'deposit' && (
+              <DepositMatch
+                orders={orders}
+                products={products}
+                onApply={(list) => {
+                  if (blocked()) return;
+                  for (const x of list) updateOrder(x.id, { paid: true, paidAt: x.paidAt });
+                  showToast(`💰 ${list.length}건 입금완료 처리`);
+                  setSheet('none');
+                }}
+                onClose={() => setSheet('none')}
+              />
+            )}
+            {sheet === 'shop' && (
+              <ShopSettingsPanel
+                copyText={(t, m) => void copyText(t, m)}
+                onSaved={() => {
+                  showToast('가게 설정 저장됨');
+                  setSheet('none');
+                }}
                 onClose={() => setSheet('none')}
               />
             )}
