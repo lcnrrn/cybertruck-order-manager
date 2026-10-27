@@ -5,6 +5,7 @@ import './sms-settings.css';
 import './product.css';
 import './copy-buttons.css';
 import './money.css';
+import './theme.css';
 import App from './App';
 import { registerSW } from 'virtual:pwa-register';
 import { initSettingSnapshots } from './settingsMeta';

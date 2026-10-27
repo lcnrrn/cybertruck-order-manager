@@ -24,6 +24,10 @@ g.fetch = async (url: string, init?: { method?: string; body?: string }) => {
   if (u.startsWith(':batchUpdate')) { tabs.set(body.requests[0].addSheet.properties.title, []); return json({}); }
   if (u.startsWith('/values:batchUpdate')) { for (const d of body.data) { const [tab, rg] = d.range.split('!'); setCells(tab, rg, d.values); } return json({}); }
   if (u.startsWith('/values:batchClear')) throw new Error('clear must not be used');
+  if (u.startsWith('/values:batchGet?')) {
+    const read = (r: string) => { const [tab, rg] = r.split('!'); const t = tabs.get(tab) || []; return rg === 'A:A' ? t.map((x) => [x[0] ?? '']) : rg === 'A:C' ? t.map((x) => x.slice(0, 3)) : t.map((x) => x.slice(0, 18)); };
+    return json({ valueRanges: u.slice('/values:batchGet?'.length).split('&').map((kv) => ({ values: read(kv.replace(/^ranges=/, '')) })) });
+  }
   const m = u.match(/^\/values\/([^!]+)!([A-Z0-9:]+?)(:append|:clear)?(\?|$)/);
   if (!m) throw new Error('unexpected ' + u);
   const [, tab, rg, op] = m;

@@ -37,48 +37,75 @@ import { BackupPanel } from './components/BackupPanel';
 import { LockedBanner, SyncGate } from './components/SyncGate';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAppUpdate } from './hooks/useAppUpdate';
+import { Dashboard } from './components/Dashboard';
+import { EmptyArt, BrandLogo } from './ui/Art';
+import {
+  ChartColumn,
+  ChevronRight,
+  ClipboardList,
+  Database,
+  Download,
+  Hammer,
+  House,
+  Link,
+  Mailbox,
+  MessageSquare,
+  MessageSquareText,
+  Package,
+  Plus,
+  ReceiptText,
+  RefreshCw,
+  Settings,
+  Spool,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 
 type Sheet = 'none' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost' | 'shipsms';
 
-const MENU_ITEMS: { id: Sheet; icon: string; label: string }[] = [
-  { id: 'import', icon: '📥', label: '가져오기' },
-  { id: 'tracking', icon: '📮', label: '송장 등록' },
-  { id: 'products', icon: '📦', label: '제품 관리' },
-  { id: 'sales', icon: '💰', label: '매출 정리' },
-  { id: 'filament', icon: '🧵', label: '필라멘트' },
-  { id: 'sms', icon: '💬', label: '문자 템플릿' },
-  { id: 'backup', icon: '💾', label: '데이터 백업' },
-  { id: 'google', icon: '⚙️', label: '구글 설정' },
+const MENU_ITEMS: { id: Sheet; icon: LucideIcon; label: string }[] = [
+  { id: 'import', icon: Download, label: '가져오기' },
+  { id: 'tracking', icon: ReceiptText, label: '송장 등록' },
+  { id: 'products', icon: Package, label: '제품 관리' },
+  { id: 'sales', icon: Wallet, label: '매출 정리' },
+  { id: 'filament', icon: Spool, label: '필라멘트' },
+  { id: 'sms', icon: MessageSquareText, label: '문자 템플릿' },
+  { id: 'backup', icon: Database, label: '데이터 백업' },
+  { id: 'google', icon: Settings, label: '구글 설정' },
 ];
 
-type Tab = 'orders' | 'make' | 'filament' | 'sales' | 'more';
-const TAB_KEY = 'cybertruck-last-tab';
-const TABS: { id: Tab; icon: string; label: string; title: string }[] = [
-  { id: 'orders', icon: '📋', label: '주문', title: '주문' },
-  { id: 'make', icon: '🛠', label: '제작', title: '제작' },
-  { id: 'filament', icon: '🧵', label: '필라멘트', title: '필라멘트' },
-  { id: 'sales', icon: '💰', label: '매출', title: '매출' },
-  { id: 'more', icon: '⚙️', label: '더보기', title: '더보기 · 설정' },
+type Tab = 'home' | 'orders' | 'make' | 'filament' | 'sales' | 'customers' | 'more';
+const TAB_KEY = 'cybertruck-last-tab-v2';
+/** 하단 탭 (필라멘트는 더보기·홈에서 들어감 — 예전 저장값 'filament' 도 그대로 열림) */
+const ALL_TABS: { id: Tab; icon: LucideIcon; label: string; title: string; hidden?: boolean }[] = [
+  { id: 'home', icon: House, label: '홈', title: '대시보드' },
+  { id: 'orders', icon: ClipboardList, label: '주문', title: '주문' },
+  { id: 'make', icon: Hammer, label: '제작', title: '제작' },
+  { id: 'sales', icon: ChartColumn, label: '매출', title: '매출' },
+  { id: 'filament', icon: Spool, label: '필라멘트', title: '필라멘트', hidden: true },
+  { id: 'more', icon: Settings, label: '더보기', title: '더보기 · 설정' },
 ];
-const MORE_ITEMS: { id: Sheet; icon: string; label: string; desc: string }[] = [
-  { id: 'epost', icon: '📮', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
-  { id: 'shipsms', icon: '💬', label: '발송 문자 보내기', desc: '송장 나온 건 발송안내 문자 모아보기 · 보냄 체크' },
-  { id: 'products', icon: '📦', label: '제품 관리', desc: '판매가 · 필라멘트 g · 출력 시간' },
-  { id: 'sms', icon: '💬', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
-  { id: 'tracking', icon: '📮', label: '송장 등록', desc: '우체국 접수증 붙여넣기' },
-  { id: 'import', icon: '📥', label: '주문 가져오기', desc: '네이버 폼 · 미리 알림' },
-  { id: 'google', icon: '🔗', label: '구글 시트 동기화', desc: '연결 · Client ID · Sheet ID' },
-  { id: 'backup', icon: '💾', label: '데이터 백업', desc: '내보내기 · 복원' },
+const TABS = ALL_TABS.filter((t) => !t.hidden);
+const MORE_ITEMS: { id: Sheet; icon: LucideIcon; color: string; label: string; desc: string }[] = [
+  { id: 'epost', icon: Mailbox, color: 'linear-gradient(135deg,#f472b6,#be185d)', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
+  { id: 'shipsms', icon: MessageSquare, color: 'linear-gradient(135deg,#a78bfa,#6d28d9)', label: '발송 문자 보내기', desc: '송장 나온 건 발송안내 문자 모아보기 · 보냄 체크' },
+  { id: 'products', icon: Package, color: 'linear-gradient(135deg,#5ee1ff,#2563eb)', label: '제품 관리', desc: '사진 · 판매가 · 필라멘트 g · 출력 시간' },
+  { id: 'filament', icon: Spool, color: 'linear-gradient(135deg,#34d399,#047857)', label: '필라멘트 재고', desc: '구매 기록 · 재고 · 종류별 사용량' },
+  { id: 'sms', icon: MessageSquareText, color: 'linear-gradient(135deg,#fbbf24,#d97706)', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
+  { id: 'tracking', icon: ReceiptText, color: 'linear-gradient(135deg,#fb923c,#c2410c)', label: '송장 등록', desc: '우체국 접수증 붙여넣기' },
+  { id: 'import', icon: Download, color: 'linear-gradient(135deg,#60a5fa,#1d4ed8)', label: '주문 가져오기', desc: '네이버 폼 · 미리 알림' },
+  { id: 'google', icon: Link, color: 'linear-gradient(135deg,#94a3b8,#475569)', label: '구글 시트 동기화', desc: '연결 · Client ID · Sheet ID' },
+  { id: 'backup', icon: Database, color: 'linear-gradient(135deg,#64748b,#334155)', label: '데이터 백업', desc: '내보내기 · 복원' },
 ];
 
 function loadTab(): Tab {
   try {
     const v = localStorage.getItem(TAB_KEY);
-    if (v && TABS.some((t) => t.id === v)) return v as Tab;
+    if (v && ALL_TABS.some((t) => t.id === v)) return v as Tab;
   } catch {
     /* ignore */
   }
-  return 'orders';
+  return 'home';
 }
 
 function loadStatusFilter(): StatusFilter {
@@ -491,7 +518,7 @@ export default function App() {
         .sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || (a.createdAt || a.updatedAt) - (b.createdAt || b.updatedAt)),
     [orders, productFilter, products, postOnly],
   );
-  const tabInfo = TABS.find((t) => t.id === tab)!;
+  const tabInfo = ALL_TABS.find((t) => t.id === tab) ?? ALL_TABS[0];
   const stats: { label: string; value: string; tone?: string }[] =
     tab === 'orders'
       ? [
@@ -526,7 +553,7 @@ export default function App() {
       <SyncGate gate={google.gate} error={google.lastError} onRetry={google.retryGate} onReadOnly={google.viewReadOnly} />
       <nav className="tabbar" aria-label="화면 전환">
         <div className="tabbar-brand">
-          <span className="eyebrow">Cybertruck · 3D Print</span>
+          <span className="brand-mark"><BrandLogo /><span className="eyebrow">Cybertruck · 3D Print</span></span>
           <b>주문 관리</b>
         </div>
         {TABS.map((t) => (
@@ -537,7 +564,7 @@ export default function App() {
             aria-current={tab === t.id ? 'page' : undefined}
             onClick={() => switchTab(t.id)}
           >
-            <span className="tabbar-ico" aria-hidden>{t.icon}</span>
+            <span className="tabbar-ico" aria-hidden><t.icon size={20} strokeWidth={tab === t.id ? 2.4 : 1.9} /></span>
             <span className="tabbar-label">{t.label}</span>
             {t.id === 'orders' && counts.작업중 > 0 ? <span className="tabbar-badge">{counts.작업중}</span> : null}
             {t.id === 'more' && postPending + smsPending > 0 ? <span className="tabbar-badge">{postPending + smsPending}</span> : null}
@@ -548,16 +575,16 @@ export default function App() {
       <div className="sticky-top">
         <header className="app-header screen-header">
           <div className="screen-title">
-            <p className="eyebrow">Cybertruck · 3D Print</p>
+            <p className="eyebrow brand-mark"><BrandLogo />Cybertruck · 3D Print</p>
             <h1>{tabInfo.title}</h1>
           </div>
-          <button type="button" className="btn btn-ghost btn-compact refresh-btn" onClick={() => void refreshAll()} disabled={google.status === 'syncing'} aria-label="새로고침">
-            {google.status === 'syncing' ? '↻ 받는 중…' : '↻ 새로고침'}
+          <button type="button" className={`btn btn-ghost btn-compact refresh-btn${google.status === 'syncing' ? ' spin' : ''}`} onClick={() => void refreshAll()} disabled={google.status === 'syncing'} aria-label="새로고침">
+            <RefreshCw size={15} />{google.status === 'syncing' ? '받는 중…' : '새로고침'}
           </button>
           {tab === 'orders' ? (
             <div className="header-actions">
-              <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}>송장 등록</button>
-              <button type="button" className="btn btn-primary desktop-only" onClick={openNew}>+ 새 주문</button>
+              <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}><ReceiptText size={15} />송장 등록</button>
+              <button type="button" className="btn btn-primary desktop-only" onClick={openNew}><Plus size={16} />새 주문</button>
             </div>
           ) : null}
         </header>
@@ -622,13 +649,41 @@ export default function App() {
         </div>
       ) : null}
 
+      {tab === 'home' && (
+        <main className="tab-page" data-lock-zone>
+          <Dashboard
+            orders={orders}
+            products={products}
+            filament={filament}
+            postPending={postPending}
+            smsPending={smsPending}
+            onGo={(t) => switchTab(t)}
+            onOpen={(s) => {
+              if (s === 'deposit') {
+                setFilter('미입금');
+                switchTab('orders');
+                return;
+              }
+              setSheet(s);
+            }}
+            onNew={openNew}
+            onEdit={openEdit}
+            onFilter={(f) => {
+              setFilter(f);
+              switchTab('orders');
+            }}
+          />
+        </main>
+      )}
+
       {tab === 'orders' && (
         <main className="order-list" data-lock-zone>
           {smsPending > 0 ? (
-            <button type="button" className="btn btn-secondary" style={{ width: '100%', marginBottom: 8 }} onClick={() => setSheet('shipsms')}>💬 송장 나온 {smsPending}건 · 발송 문자 보내기</button>
+            <button type="button" className="btn btn-secondary btn-wide" onClick={() => setSheet('shipsms')}><MessageSquare size={16} />송장 나온 {smsPending}건 · 발송 문자 보내기</button>
           ) : null}
           {filtered.length === 0 ? (
             <div className="empty">
+              <EmptyArt kind={query ? 'search' : orders.length === 0 ? 'box' : filter === '작업중' ? 'done' : 'box'} />
               <p className="empty-title">{empty.title}</p>
               {empty.hint ? <p className="empty-hint">{empty.hint}</p> : null}
               {orders.length === 0 ? (
@@ -648,7 +703,7 @@ export default function App() {
       {tab === 'make' && (
         <main className="tab-page" data-lock-zone>
           {makeSummary.orderCount === 0 ? (
-            <div className="empty"><p className="empty-title">만들 제품이 없어요</p><p className="empty-hint">대기·제작중 주문이 모두 끝났어요.</p></div>
+            <div className="empty"><EmptyArt kind="done" /><p className="empty-title">만들 제품이 없어요</p><p className="empty-hint">대기·제작중 주문이 모두 끝났어요.</p></div>
           ) : (
             <>
               <section className="card-section">
@@ -662,13 +717,13 @@ export default function App() {
                 />
               </section>
               <h2 className="section-title">
-                ✅ 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
+                <Hammer size={17} /> 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
               </h2>
               {smsPending > 0 ? (
-                <button type="button" className="btn btn-secondary" style={{ width: '100%', marginBottom: 8 }} onClick={() => setSheet('shipsms')}>💬 발송 문자 보내기 ({smsPending}건)</button>
+                <button type="button" className="btn btn-secondary btn-wide" onClick={() => setSheet('shipsms')}><MessageSquare size={16} />발송 문자 보내기 ({smsPending}건)</button>
               ) : null}
               {postPending > 0 ? (
-                <button type="button" className="btn btn-secondary" style={{ width: '100%', marginBottom: 8 }} onClick={() => setSheet('epost')}>📮 우체국 접수하러 가기 ({postPending}건)</button>
+                <button type="button" className="btn btn-secondary btn-wide" onClick={() => setSheet('epost')}><Mailbox size={16} />우체국 접수하러 가기 ({postPending}건)</button>
               ) : null}
               {postPending > 0 || postOnly ? (
                 <button
@@ -724,14 +779,14 @@ export default function App() {
           <section className="card-section more-list">
             {MORE_ITEMS.map((m) => (
               <button key={m.id} type="button" className="more-row" data-allow-locked={m.id === 'google' || m.id === 'backup' ? '' : undefined} onClick={() => setSheet(m.id)}>
-                <span className="more-ico" aria-hidden>{m.icon}</span>
+                <span className="more-ico" aria-hidden style={{ ['--ico-bg' as string]: m.color }}><m.icon size={20} /></span>
                 <span className="more-text">
                   <b>{m.label}</b>
                   <small>{m.desc}</small>
                 </span>
                 {m.id === 'epost' && postPending > 0 ? <span className="more-badge">{postPending}</span> : null}
                 {m.id === 'shipsms' && smsPending > 0 ? <span className="more-badge">{smsPending}</span> : null}
-                <span className="more-caret" aria-hidden>›</span>
+                <span className="more-caret" aria-hidden><ChevronRight size={18} /></span>
               </button>
             ))}
           </section>
@@ -740,7 +795,7 @@ export default function App() {
       )}
 
       {tab === 'orders' && (
-        <button type="button" className="fab" data-lock-zone onClick={openNew} aria-label="새 주문 추가">＋</button>
+        <button type="button" className="fab" data-lock-zone onClick={openNew} aria-label="새 주문 추가"><Plus size={28} strokeWidth={2.6} /></button>
       )}
 
       {sheet !== 'none' && (
@@ -757,7 +812,7 @@ export default function App() {
                 <div className="menu-grid">
                   {MENU_ITEMS.map((m) => (
                     <button key={m.id} type="button" className="menu-tile" onClick={() => setSheet(m.id)}>
-                      <span className="menu-ico" aria-hidden>{m.icon}</span>
+                      <span className="menu-ico" aria-hidden><m.icon size={22} /></span>
                       <span className="menu-label">{m.label}</span>
                     </button>
                   ))}
