@@ -27,7 +27,7 @@ import {
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 export const SETTINGS_SHEET_NAME = '설정';
 const HEADERS = ['key', 'json', 'updatedAt'];
-const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament', 'production', 'expenses', 'deletedOrders', 'epostRequest'];
+const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament', 'production', 'expenses', 'deletedOrders', 'epostRequest', 'productImages', 'shop'];
 
 interface Entry {
   json: string; // '' = default / not set
