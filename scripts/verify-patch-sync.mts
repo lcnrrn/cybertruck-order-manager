@@ -116,4 +116,26 @@ writes = []; await pullMergePush(T, A);
 assert.ok(writes.every((w) => !w.startsWith('설정!A1:C') || w === '설정!A1:C1'), 'settings rows only: ' + writes.join(','));
 use('B'); initSettingSnapshots(); await pullMergePush(T, []);
 assert.equal(JSON.parse(localStorage.getItem(SETTING_LS_KEYS.sms)!).접수, 'hi');
+
+// 9) 새 설정 키(제품 사진·가게)도 행 단위로 올라가고 다른 기기에 도착, 기존 키는 그대로
+use('A'); initSettingSnapshots();
+localStorage.setItem(SETTING_LS_KEYS.productImages, JSON.stringify({ '휴대폰 마운트 거치대': 'data:image/jpeg;base64,AAAA' })); markSettingChanged('productImages');
+localStorage.setItem(SETTING_LS_KEYS.shop, JSON.stringify({ bankName: '카카오뱅크', costPerGram: 22 })); markSettingChanged('shop');
+writes = []; await pullMergePush(T, A);
+assert.ok(writes.every((w) => !w.startsWith('Orders')), 'settings change must not touch Orders: ' + writes.join(','));
+const setRows = tabs.get('설정')!.map((r) => r[0]);
+assert.ok(setRows.includes('productImages') && setRows.includes('shop') && setRows.includes('sms'), 'rows: ' + setRows.join(','));
+use('B'); initSettingSnapshots(); await pullMergePush(T, B);
+assert.equal(JSON.parse(localStorage.getItem(SETTING_LS_KEYS.shop)!).costPerGram, 22);
+assert.ok(JSON.parse(localStorage.getItem(SETTING_LS_KEYS.productImages)!)['휴대폰 마운트 거치대']);
+assert.equal(JSON.parse(localStorage.getItem(SETTING_LS_KEYS.sms)!).접수, 'hi');
+// B 가 계좌만 바꾸고 A 가 원가만 바꿔도 둘 다 유지 (항목 단위 병합)
+localStorage.setItem(SETTING_LS_KEYS.shop, JSON.stringify({ bankName: '토스뱅크', costPerGram: 22 })); markSettingChanged('shop');
+await pullMergePush(T, B);
+use('A'); localStorage.setItem(SETTING_LS_KEYS.shop, JSON.stringify({ bankName: '카카오뱅크', costPerGram: 25 })); markSettingChanged('shop');
+await pullMergePush(T, A);
+const shopA = JSON.parse(localStorage.getItem(SETTING_LS_KEYS.shop)!);
+assert.equal(shopA.bankName, '토스뱅크'); assert.equal(shopA.costPerGram, 25);
+// 주문 행 개수는 그대로 (지우거나 밀지 않음)
+assert.equal(tabs.get('Orders')!.length, 5);
 console.log('patch sync OK');
