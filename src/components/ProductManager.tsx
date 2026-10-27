@@ -1,4 +1,6 @@
-import { loadProductionSettings, saveProductionSettings } from '../production';
+import { SUSPICIOUS_GRAMS, SUSPICIOUS_MINUTES, formatDuration, loadProductionSettings, saveProductionSettings } from '../production';
+import { ImagePlus, TriangleAlert, X } from 'lucide-react';
+import { MAX_IMAGES_JSON, fileToThumb, imagesSize, renameProductImage, setProductImage, useProductImages } from '../productImages';
 import { useState } from 'react';
 import {
   DEFAULT_PRODUCTS,
@@ -23,6 +25,23 @@ function sameColor(a: ProductColor, b: ProductColor): boolean {
 export function ProductManager({ products, onChange, onClose, filament, onOpenFilament }: Props) {
   const [prodSet, setProdSet] = useState(() => loadProductionSettings());
   const typeOpts = (filament?.types || []).filter((t) => !t.hidden);
+  const images = useProductImages();
+  const usedPct = Math.round((imagesSize(images) / MAX_IMAGES_JSON) * 100);
+  const [photoMsg, setPhotoMsg] = useState<string | null>(null);
+
+  async function pickPhoto(name: string, file: File | undefined) {
+    if (!file) return;
+    try {
+      const thumb = await fileToThumb(file);
+      if (!setProductImage(name, thumb)) {
+        setPhotoMsg('사진 저장 공간이 꽉 찼어요 — 안 쓰는 제품 사진을 지워 주세요');
+        return;
+      }
+      setPhotoMsg(`「${name}」 사진 저장됨 · 동기화하면 다른 기기와 주문 페이지에도 보여요`);
+    } catch (e) {
+      setPhotoMsg(e instanceof Error ? e.message : '사진을 저장하지 못했어요');
+    }
+  }
 
   function setParts(name: string, parts: { typeId: string; grams: number }[]) {
     onChange(
@@ -96,6 +115,7 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
     onChange(
       products.map((p) => (p.name === renaming ? { ...p, name: next } : p)),
     );
+    renameProductImage(renaming, next);
     setRenaming(null);
     setRenameValue('');
   }
@@ -197,6 +217,10 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
           </label>
         </div>
       </div>
+      <p className="hint photo-hint">
+        <ImagePlus size={14} /> 왼쪽 동그라미를 눌러 <b>제품 사진</b>을 넣을 수 있어요 (작은 썸네일로 줄여서 저장 · 사진 공간 {usedPct}% 사용)
+      </p>
+      {photoMsg ? <p className="photo-msg" role="status">{photoMsg}</p> : null}
       <p className="hint">
         주문 내용에 쓸 제품 목록을 추가·이름 변경·색상·삭제·순서 변경할 수 있습니다.
         제품마다 <b>판매가(1개)</b>와 <b>필라멘트 소모량(1개, g)</b>을 입력하면 주문 금액과 필라멘트 차감이 자동 계산됩니다.
@@ -210,15 +234,32 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
           const isColorEdit = editingColorFor === name;
           return (
             <li key={`${name}-${i}`} className="source-manager-item product-manager-item">
-              <span
-                className="source-manager-swatch"
-                style={{
-                  background: color.bg,
-                  borderColor: color.border,
-                  color: color.text,
-                }}
-                aria-hidden
-              />
+              <span className="pm-photo-wrap">
+                <label className="pm-photo" style={{ borderColor: color.border, background: color.bg }} title="사진 넣기">
+                  {images[name] ? <img src={images[name]} alt={name} /> : <ImagePlus size={18} color={color.text} />}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    onChange={(e) => {
+                      void pickPhoto(name, e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {images[name] ? (
+                  <button
+                    type="button"
+                    className="pm-photo-del"
+                    aria-label={`${name} 사진 지우기`}
+                    onClick={() => {
+                      if (window.confirm(`「${name}」 사진을 지울까요?`)) setProductImage(name, null);
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                ) : null}
+              </span>
               {isRenaming ? (
                 <input
                   className="source-manager-rename"
@@ -316,6 +357,12 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                   />
                 </label>
               </div>
+              {(product.grams || 0) > SUSPICIOUS_GRAMS || (product.minutes || 0) > SUSPICIOUS_MINUTES ? (
+                <p className="pm-outlier">
+                  <TriangleAlert size={14} />
+                  1개당 {(product.grams || 0).toLocaleString('ko-KR')}g · {formatDuration(product.minutes || 0)} — 다른 제품보다 훨씬 커요. 세트 전체 값이면 그대로 두고, 1개 값이 아니면 고쳐 주세요.
+                </p>
+              ) : null}
               <div className="fil-parts">
                 <span className="hint">필라멘트 (1개당){typeOpts.length <= 1 && onOpenFilament ? ' — ' : ''}
                   {typeOpts.length <= 1 && onOpenFilament && (

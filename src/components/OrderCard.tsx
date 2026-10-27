@@ -7,6 +7,7 @@ import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
 import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { PayBadge } from './PayBadge';
+import { avatarColor, statusPill } from './Dashboard';
 import { formatWon, orderAmount, orderItemProgress, progressTotals } from '../production';
 
 interface Props {
@@ -56,6 +57,7 @@ export function OrderCard({
     <article id={`order-${order.id}`} className={`order-card ${order.priority ? 'priority' : ''}`}>
       <header className="order-card-header">
         <div className="order-title-row">
+          <span className="avatar order-avatar" style={{ background: avatarColor(order.name || '?') }} aria-hidden>{(order.name || '?').slice(0, 1)}</span>
           <h2 className="order-name">{order.name}</h2>
           <span className="order-date" title={new Date(createdTs).toLocaleString('ko-KR')}>
             {formatOrderDate(createdTs)} 접수
@@ -69,6 +71,16 @@ export function OrderCard({
           >
             {order.priority ? '★' : '☆'}
           </button>
+        </div>
+        <div className="order-pills">
+          <span className={`pill ${statusPill(order).cls}`}>{statusPill(order).label}</span>
+          {ships.length ? (
+            <span className="pill ship">
+              {ships.some((x) => x.delivered) ? '배달완료' : ships.some((x) => x.trackingNumber) ? '발송됨' : ships.some((x) => x.postStatus === 'requested') ? '우체국 전송 대기' : '발송'}
+              {ships.length > 1 ? ` ×${ships.length}` : ''}
+            </span>
+          ) : null}
+          {order.priority ? <span className="pill make">우선</span> : null}
         </div>
       </header>
 

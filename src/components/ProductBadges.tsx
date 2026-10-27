@@ -3,6 +3,7 @@ import {
   parseItemsAgainstCatalog,
   type Product,
 } from '../products';
+import { useProductImages } from '../productImages';
 
 interface Props {
   items: string;
@@ -17,6 +18,7 @@ interface Props {
  * Best-effort match against the current product catalog.
  */
 export function ProductBadges({ items, products, className, prices }: Props) {
+  const images = useProductImages();
   const raw = (items || '').trim();
   if (!raw) {
     return <span className={className}>주문 내용 없음</span>;
@@ -52,6 +54,7 @@ export function ProductBadges({ items, products, className, prices }: Props) {
             }}
             title={name}
           >
+            {images[name] ? <img className="pb-thumb" src={images[name]} alt="" loading="lazy" /> : <i className="pb-dot" style={{ background: c.border }} />}
             {name}
             {(qty[name] || 1) > 1 ? <b className="product-badge-qty"> ×{qty[name]}</b> : null}
             {prices?.[name] === 0 ? <em className="service-tag">서비스</em> : null}
