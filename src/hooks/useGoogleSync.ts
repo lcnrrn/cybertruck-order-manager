@@ -12,16 +12,25 @@ import {
 import { SETTINGS_CHANGED_EVENT } from '../settingsMeta';
 import { checkOutdated } from '../appVersion';
 import { isAuthError, ordersFingerprint, pullMergePush } from '../google/syncCore';
+import { isQuotaError } from '../google/sheets';
 
 const LS_SIGNED = 'cybertruck-google-signed';
 const LS_EMAIL = 'cybertruck-google-email';
 /** 시트에 아직 안 올라간 변경이 있는지 (앱을 껐다 켜도 유지 → 다시 연결되면 자동 업로드) */
 const LS_DIRTY = 'cybertruck-sync-dirty';
 const LS_LAST_SYNC = 'cybertruck-last-sync';
-const DEBOUNCE_MS = 1200;
+/** 연달아 탭해도(보냄 체크 여러 개 등) 마지막 탭 뒤 한 번만 저장 */
+const DEBOUNCE_MS = 2000;
+/** 저장(수정) 동기화 사이 최소 간격 */
+const MIN_EDIT_GAP_MS = 4000;
 const POLL_MS = 45000;
+/** 방금 동기화했으면 창 전환·포커스·주기 확인은 건너뜀 */
+const SOFT_SKIP_MS = 15000;
+/** 구글 시트 한도(429) 때 다시 시도 간격 */
+const RETRY_DELAYS_MS = [5000, 15000, 30000, 60000];
+export const BUSY_NOTICE = '구글 시트가 잠깐 바빠서 곧 다시 저장할게요';
 
-export type SyncStatus = 'idle' | 'connecting' | 'syncing' | 'error';
+export type SyncStatus = 'idle' | 'connecting' | 'syncing' | 'retrying' | 'error';
 /** 시작 화면 가림막: loading=불러오는 중, login=탭 필요, offline, error, none=사용 가능 */
 export type GateState = 'none' | 'loading' | 'login' | 'offline' | 'error';
 const GATE_TIMEOUT_MS = 20000;
@@ -104,6 +113,14 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
   const pendingRef = useRef(false);
   const debounceTimer = useRef<number | null>(null);
   const signedIntent = useRef(false);
+  /** 마지막 동기화 시작/끝 시각 · 줄 서 있는 동기화 수 */
+  const lastStartRef = useRef(0);
+  const lastDoneRef = useRef(0);
+  const activeRef = useRef(0);
+  /** 한도 초과 재시도: 몇 번째인지 · 예약 타이머 */
+  const retryAttemptRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
+  const retryRef = useRef<() => void>(() => undefined);
   const replaceOrdersRef = useRef(replaceOrders);
   const onToastRef = useRef(onToast);
 
@@ -167,7 +184,8 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
           return false;
         }
         const startedDirty = lsNum(LS_DIRTY);
-        if (reason !== 'poll') setStatus('syncing');
+        lastStartRef.current = Date.now();
+        if (reason !== 'poll' && retryAttemptRef.current === 0) setStatus('syncing');
         try {
           // 시간 초과로 끊긴 지난 회차가 아직 시트에 쓰는 중이면 끝날 때까지 기다림 (동시에 두 번 쓰지 않게)
           await inflightRef.current.catch(() => undefined);
@@ -198,6 +216,12 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
             setDirtySince(0);
           }
           const now = Date.now();
+          lastDoneRef.current = now;
+          retryAttemptRef.current = 0;
+          if (retryTimerRef.current) {
+            window.clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = null;
+          }
           lsSet(LS_LAST_SYNC, String(now));
           setLastSyncAt(now);
           setLastError(null);
@@ -212,6 +236,19 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
           if (isAuthError(msg)) {
             dropToken('구글 로그인 만료 — 탭해서 다시 연결');
             gateFail('login');
+          } else if (isQuotaError(msg)) {
+            // 구글 시트 읽기 한도(분당) 초과 — 오류 대신 잠깐 뒤 자동으로 다시 (고친 내용은 그대로 대기)
+            const n = retryAttemptRef.current;
+            retryAttemptRef.current = n + 1;
+            const delay = RETRY_DELAYS_MS[Math.min(n, RETRY_DELAYS_MS.length - 1)];
+            setLastError(BUSY_NOTICE);
+            setStatus('retrying');
+            if (n === 0 && (reason !== 'poll' || lsNum(LS_DIRTY))) onToastRef.current?.(BUSY_NOTICE);
+            if (retryTimerRef.current) window.clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = window.setTimeout(() => {
+              retryTimerRef.current = null;
+              retryRef.current();
+            }, delay);
           } else {
             gateFail(navigator.onLine ? 'error' : 'offline');
             setLastError(msg);
@@ -221,7 +258,10 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
           return false;
         }
       };
-      const p = queueRef.current.then(run, run);
+      activeRef.current += 1;
+      const p = queueRef.current.then(run, run).finally(() => {
+        activeRef.current -= 1;
+      });
       queueRef.current = p.catch(() => undefined);
       return p;
     },
@@ -243,10 +283,17 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders]);
 
-  const scheduleSync = useCallback(() => {
+  const scheduleSync = useCallback((delay = DEBOUNCE_MS) => {
     if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
     debounceTimer.current = window.setTimeout(() => {
       debounceTimer.current = null;
+      // 한도 초과로 재시도 예약 중이면 그때 같이 저장 (먼저 보내서 한도를 더 쓰지 않음)
+      if (retryTimerRef.current) return;
+      const gap = Date.now() - lastStartRef.current;
+      if (gap < MIN_EDIT_GAP_MS) {
+        scheduleSync(MIN_EDIT_GAP_MS - gap);
+        return;
+      }
       if (!tokenRef.current) {
         setNeedsLogin(isSigned());
         return;
@@ -257,7 +304,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
         pendingRef.current = false;
         if (lsNum(LS_DIRTY) && tokenRef.current && ordersFingerprint(ordersRef.current) !== syncedFpRef.current) scheduleSync();
       });
-    }, DEBOUNCE_MS);
+    }, delay);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncOnce]);
 
@@ -271,19 +318,40 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     return () => window.removeEventListener(SETTINGS_CHANGED_EVENT, onChanged);
   }, [markDirty, scheduleSync]);
 
+  // 한도 초과 뒤 재시도: 고친 게 있으면 저장, 가림막 중이면 다시 받기, 아니면 최신본만 확인
+  useEffect(() => {
+    retryRef.current = () => {
+      if (!tokenRef.current) return;
+      const reason = !syncedRef.current ? 'open' : lsNum(LS_DIRTY) ? 'edit' : 'poll';
+      void syncOnce(reason).then((ok) => {
+        if (ok && lsNum(LS_DIRTY) && ordersFingerprint(ordersRef.current) !== syncedFpRef.current) scheduleSync();
+      });
+    };
+  }, [syncOnce, scheduleSync]);
+
+  /** 창 전환·포커스·주기 확인: 이미 동기화 중/대기 중이거나 방금 했으면 건너뜀 (읽기 한도 아끼기) */
+  const softSync = useCallback(
+    (reason: 'open' | 'poll') => {
+      if (activeRef.current > 0 || retryTimerRef.current || debounceTimer.current) return;
+      if (Date.now() - lastDoneRef.current < (reason === 'poll' ? POLL_MS / 2 : SOFT_SKIP_MS) && syncedRef.current) return;
+      void syncOnce(reason);
+    },
+    [syncOnce],
+  );
+
   // 앱 열기/다시 보기/주기적으로: 최신본 먼저 받기
   useEffect(() => {
     if (!accessToken) return;
-    const id = window.setInterval(() => void syncOnce('poll'), POLL_MS);
+    const id = window.setInterval(() => softSync('poll'), POLL_MS);
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
       if (!getStoredToken()) {
         dropToken('구글 로그인 만료 — 탭해서 다시 연결');
         return;
       }
-      void syncOnce('open');
+      softSync('open');
     };
-    const onOnline = () => void syncOnce('open');
+    const onOnline = () => softSync('open');
     window.addEventListener('focus', onVis);
     window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', onVis);
@@ -293,7 +361,7 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
       window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [accessToken, syncOnce, dropToken]);
+  }, [accessToken, softSync, dropToken]);
 
   // 백그라운드에 1분 넘게 있다가 돌아오면: 다시 최신 내용부터 받고 나서 수정 허용
   useEffect(() => {

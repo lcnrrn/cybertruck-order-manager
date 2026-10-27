@@ -17,8 +17,12 @@ export function isAuthError(msg: string): boolean {
   return /\b401\b|invalid authentication|invalid credentials|expired|UNAUTHENTICATED|Invalid Credentials/i.test(msg);
 }
 
-import { patchOrders, pullOrders, purgeDeletedRows } from './sheets';
-import { syncSettings } from './settingsSync';
+import { batchRead, ensureOrdersSheet, ensureTab, invalidateSheetMeta, isQuotaError, parseOrdersValues, patchOrders, purgeDeletedRows } from './sheets';
+import { SETTINGS_RANGE, SETTINGS_SHEET_NAME, syncSettings } from './settingsSync';
+import { ORDERS_SHEET_NAME } from './config';
+
+/** 지운 행 정리가 실패하면 잠시 쉼 (매 동기화마다 다시 시도하며 읽기 한도를 쓰지 않게) */
+let purgeBlockedUntil = 0;
 
 /** 주문 하나의 지문(짧은 해시) */
 export function orderHash(o: Order): string {
@@ -135,8 +139,19 @@ export function planSync(local: Order[], remote: Order[], base: Record<string, s
  * 한 번도 받은 적 없는 기기(새 아이콘·저장소 비워짐)는 받기 전엔 아무것도 쓰지 않음.
  */
 export async function pullMergePush(token: string, local: Order[]): Promise<{ merged: Order[]; pushed: boolean; remoteCount: number }> {
-  await syncSettings(token);
-  const remote = await pullOrders(token);
+  // 읽기 요청 1번: 설정 탭 + 주문 탭을 batchGet 으로 함께 (탭 목록은 앱 켜 있는 동안 캐시)
+  let remote: Order[];
+  try {
+    await ensureTab(token, SETTINGS_SHEET_NAME);
+    await ensureOrdersSheet(token);
+    const [settingsVals, orderVals] = await batchRead(token, [SETTINGS_RANGE, `${ORDERS_SHEET_NAME}!A:R`]);
+    await syncSettings(token, settingsVals);
+    remote = parseOrdersValues(orderVals);
+  } catch (e) {
+    // 탭 이름이 바뀌었거나 지워졌을 수 있으니 다음엔 탭 목록부터 다시 확인
+    if (!isQuotaError(e instanceof Error ? e.message : '')) invalidateSheetMeta();
+    throw e;
+  }
   const deleted = loadDeleted();
   const { merged, write } = planSync(local, remote, loadBase(), deleted);
   let pushed = false;
@@ -150,10 +165,12 @@ export async function pullMergePush(token: string, local: Order[]): Promise<{ me
   }
   // 이 기기/다른 기기에서 지운 주문이 시트에 행으로 남아 있으면 그 행만 지움 (삭제 뒤 다시 고쳐진 주문은 제외)
   const stale = remote.filter((r) => deleted[r.id] && deleted[r.id] >= r.updatedAt).map((r) => r.id);
-  if (stale.length) {
+  // (지울 행이 있을 때만 — 없으면 읽기 0번)
+  if (stale.length && Date.now() >= purgeBlockedUntil) {
     try {
       await purgeDeletedRows(token, stale);
     } catch (e) {
+      purgeBlockedUntil = Date.now() + 10 * 60_000;
       console.warn('purgeDeletedRows', e);
     }
   }

@@ -1,4 +1,5 @@
 import { getSheetId } from './config';
+import { ensureTab } from './sheets';
 import { mergeDeleted, normalizeDeleted } from '../deletedOrders';
 import { mergeById, mergeExpenseStates, normalizeExpenses } from '../expenses';
 import {
@@ -49,29 +50,24 @@ async function check(res: Response, what: string): Promise<Response> {
   } catch {
     /* ignore */
   }
+  if (res.status === 429 || res.status === 503) msg += ` [HTTP ${res.status}]`;
   throw new Error(`${what}: ${msg}`);
-}
-
-async function ensureSheet(token: string, id: string): Promise<void> {
-  const meta = await check(await req(token, `${id}?fields=sheets.properties.title`), '설정 탭 확인 실패');
-  const data = (await meta.json()) as { sheets?: { properties?: { title?: string } }[] };
-  if ((data.sheets || []).some((s) => s.properties?.title === SETTINGS_SHEET_NAME)) return;
-  await check(
-    await req(token, `${id}:batchUpdate`, {
-      method: 'POST',
-      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: SETTINGS_SHEET_NAME } } }] }),
-    }),
-    '설정 탭 생성 실패',
-  );
 }
 
 const STAMPS_ROW = 'itemStamps';
 let remoteStamps: ItemStamps = {};
 
-async function pullRemote(token: string, id: string): Promise<Map<SettingKey, Entry>> {
-  const range = encodeURIComponent(`${SETTINGS_SHEET_NAME}!A:C`);
-  const res = await check(await req(token, `${id}/values/${range}`), '설정 읽기 실패');
-  const data = (await res.json()) as { values?: string[][] };
+/** 설정 탭 범위 — 동기화 때 주문 탭과 함께 batchGet 으로 한 번에 읽음 */
+export const SETTINGS_RANGE = `${SETTINGS_SHEET_NAME}!A:C`;
+
+async function pullRemote(token: string, id: string, prefetched?: string[][]): Promise<Map<SettingKey, Entry>> {
+  let values = prefetched;
+  if (!values) {
+    const range = encodeURIComponent(SETTINGS_RANGE);
+    const res = await check(await req(token, `${id}/values/${range}`), '설정 읽기 실패');
+    values = ((await res.json()) as { values?: string[][] }).values || [];
+  }
+  const data = { values };
   const out = new Map<SettingKey, Entry>();
   remoteStamps = {};
   for (const row of data.values || []) {
@@ -205,19 +201,21 @@ function mergeExpensesEntry(local: Entry | null, remote: Entry | null): Entry | 
 let running: Promise<boolean> | null = null;
 
 /** Pull → merge → write local / push remote. Returns true if local settings changed. */
-export function syncSettings(token: string): Promise<boolean> {
+/** prefetched: 같은 동기화에서 방금 batchGet 으로 읽은 설정!A:C 값 (있으면 다시 안 읽음) */
+export function syncSettings(token: string, prefetched?: string[][]): Promise<boolean> {
+  // 이미 실행 중이면 그 뒤에 새로 읽어서 (미리 읽은 값은 그새 낡았을 수 있음)
   if (running) return running.then(() => syncSettingsOnce(token));
-  running = syncSettingsOnce(token).finally(() => {
+  running = syncSettingsOnce(token, prefetched).finally(() => {
     running = null;
   });
   return running;
 }
 
-async function syncSettingsOnce(token: string): Promise<boolean> {
+async function syncSettingsOnce(token: string, prefetched?: string[][]): Promise<boolean> {
   const id = getSheetId();
   if (!id) return false;
-  await ensureSheet(token, id);
-  const remote = await pullRemote(token, id);
+  if (!prefetched) await ensureTab(token, SETTINGS_SHEET_NAME);
+  const remote = await pullRemote(token, id, prefetched);
   const localStamps = getItemStamps();
   const rStamps = remoteStamps;
   const stamps = mergeStamps(localStamps, rStamps);

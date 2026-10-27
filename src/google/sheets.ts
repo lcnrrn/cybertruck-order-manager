@@ -31,12 +31,67 @@ async function sheetsFetch(
 }
 
 async function readError(res: Response): Promise<string> {
+  let msg: string;
   try {
     const body = (await res.json()) as { error?: { message?: string } };
-    return body.error?.message || res.statusText || `HTTP ${res.status}`;
+    msg = body.error?.message || res.statusText || `HTTP ${res.status}`;
   } catch {
-    return res.statusText || `HTTP ${res.status}`;
+    msg = res.statusText || `HTTP ${res.status}`;
   }
+  // 429(읽기/쓰기 한도)·503 은 잠깐 기다렸다 다시 하면 되는 오류 → 표시해서 자동 재시도
+  if (res.status === 429 || res.status === 503) msg += ` [HTTP ${res.status}]`;
+  return msg;
+}
+
+/** 구글 시트 한도 초과(429)·일시 장애 — 잠깐 뒤 다시 하면 되는 오류 */
+export function isQuotaError(msg: string): boolean {
+  return /\[HTTP (429|503)\]|quota exceeded|rate ?limit|RESOURCE_EXHAUSTED|too many requests|currently unavailable/i.test(msg);
+}
+
+/**
+ * 탭 목록(제목 → gid) — 앱을 켜 있는 동안 한 번만 읽음 (매 동기화마다 읽지 않음).
+ * 탭이 없다고 나오면 그때만 다시 읽어 확인.
+ */
+let metaCache: { id: string; tabs: Map<string, number> } | null = null;
+export function invalidateSheetMeta(): void {
+  metaCache = null;
+}
+export async function getSheetTabs(accessToken: string, force = false): Promise<Map<string, number>> {
+  const spreadsheetId = sheetIdOrThrow();
+  if (!force && metaCache && metaCache.id === spreadsheetId) return metaCache.tabs;
+  const metaRes = await sheetsFetch(accessToken, `${spreadsheetId}?fields=sheets.properties(sheetId,title)`);
+  if (!metaRes.ok) throw new Error(`스프레드시트를 열 수 없습니다: ${await readError(metaRes)}`);
+  const meta = (await metaRes.json()) as { sheets?: { properties?: { sheetId?: number; title?: string } }[] };
+  const tabs = new Map<string, number>();
+  for (const s of meta.sheets || []) if (s.properties?.title) tabs.set(s.properties.title, s.properties.sheetId ?? 0);
+  metaCache = { id: spreadsheetId, tabs };
+  return tabs;
+}
+
+/** 탭이 있는지 확인(캐시), 없으면 만들기. 만들었으면 true */
+export async function ensureTab(accessToken: string, title: string): Promise<boolean> {
+  let tabs = await getSheetTabs(accessToken);
+  if (tabs.has(title)) return false;
+  tabs = await getSheetTabs(accessToken, true);
+  if (tabs.has(title)) return false;
+  const spreadsheetId = sheetIdOrThrow();
+  const createRes = await sheetsFetch(accessToken, `${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+  });
+  invalidateSheetMeta();
+  if (!createRes.ok) throw new Error(`${title} 탭 생성 실패: ${await readError(createRes)}`);
+  return true;
+}
+
+/** 여러 범위를 읽기 요청 1번으로 (values.batchGet) */
+export async function batchRead(accessToken: string, ranges: string[]): Promise<string[][][]> {
+  const spreadsheetId = sheetIdOrThrow();
+  const q = ranges.map((r) => `ranges=${encodeURIComponent(r)}`).join('&');
+  const res = await sheetsFetch(accessToken, `${spreadsheetId}/values:batchGet?${q}`);
+  if (!res.ok) throw new Error(`시트 읽기 실패: ${await readError(res)}`);
+  const data = (await res.json()) as { valueRanges?: { values?: unknown[][] }[] };
+  return ranges.map((_, i) => (data.valueRanges?.[i]?.values || []).map((r) => (r || []).map((c) => String(c ?? ''))));
 }
 
 export function orderToRow(o: Order): string[] {
@@ -203,32 +258,11 @@ function optNum(raw: string | undefined): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/** Ensure "Orders" tab exists; create with headers if missing. */
+/** Ensure "Orders" tab exists; create with headers if missing. (탭 목록은 캐시 — 평소엔 읽기 0번) */
 export async function ensureOrdersSheet(accessToken: string): Promise<void> {
+  const created = await ensureTab(accessToken, ORDERS_SHEET_NAME);
+  if (!created) return;
   const spreadsheetId = sheetIdOrThrow();
-  const metaRes = await sheetsFetch(
-    accessToken,
-    `${spreadsheetId}?fields=sheets.properties.title`,
-  );
-  if (!metaRes.ok) {
-    throw new Error(`스프레드시트를 열 수 없습니다: ${await readError(metaRes)}`);
-  }
-  const meta = (await metaRes.json()) as {
-    sheets?: { properties?: { title?: string } }[];
-  };
-  const titles = (meta.sheets || []).map((s) => s.properties?.title || '');
-  if (titles.includes(ORDERS_SHEET_NAME)) return;
-
-  const createRes = await sheetsFetch(accessToken, `${spreadsheetId}:batchUpdate`, {
-    method: 'POST',
-    body: JSON.stringify({
-      requests: [{ addSheet: { properties: { title: ORDERS_SHEET_NAME } } }],
-    }),
-  });
-  if (!createRes.ok) {
-    throw new Error(`Orders 탭 생성 실패: ${await readError(createRes)}`);
-  }
-
   const headerRes = await sheetsFetch(
     accessToken,
     `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!A1`)}?valueInputOption=RAW`,
@@ -251,7 +285,11 @@ export async function pullOrders(accessToken: string): Promise<Order[]> {
     throw new Error(`시트 읽기 실패: ${await readError(res)}`);
   }
   const data = (await res.json()) as { values?: string[][] };
-  const values = data.values || [];
+  return parseOrdersValues(data.values || []);
+}
+
+/** Orders!A:R 값 → 주문 목록 (batchGet 결과에도 씀) */
+export function parseOrdersValues(values: string[][]): Order[] {
   if (values.length === 0) return [];
 
   const start = values[0]?.[0] === 'id' ? 1 : 0;
@@ -493,10 +531,7 @@ export async function purgeDeletedRows(accessToken: string, ids: string[]): Prom
   const want = Array.from(new Set(ids.filter((x) => x && !isSampleOrderId(x)))).slice(0, 5);
   if (!want.length) return 0;
   const spreadsheetId = sheetIdOrThrow();
-  const metaRes = await sheetsFetch(accessToken, `${spreadsheetId}?fields=sheets.properties(sheetId,title)`);
-  if (!metaRes.ok) throw new Error(`시트 정보 읽기 실패: ${await readError(metaRes)}`);
-  const meta = (await metaRes.json()) as { sheets?: { properties?: { sheetId?: number; title?: string } }[] };
-  const gid = meta.sheets?.find((s) => s.properties?.title === ORDERS_SHEET_NAME)?.properties?.sheetId;
+  const gid = (await getSheetTabs(accessToken)).get(ORDERS_SHEET_NAME);
   if (gid === undefined) return 0;
   const { rows } = await readIdRows(accessToken, spreadsheetId);
   const targets: number[] = [];
