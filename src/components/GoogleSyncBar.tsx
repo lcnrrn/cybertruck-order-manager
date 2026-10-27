@@ -45,6 +45,9 @@ export function SaveStatus({ connected, needsLogin, status, dirty, dirtySince, l
   } else if (dirty && dirtySince && Date.now() - dirtySince > 90_000) {
     tone = 'bad';
     text = `저장 안 됨 — ${hm(dirtySince)}부터 고친 내용이 이 기기에만 있어요 · 탭해서 저장`;
+  } else if (status === 'retrying') {
+    tone = 'busy';
+    text = '구글 시트가 잠깐 바빠서 곧 다시 저장할게요';
   } else if (dirty) {
     tone = 'busy';
     text = '저장 대기 중…';

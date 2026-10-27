@@ -1473,11 +1473,19 @@ html, body { overflow-x: clip; }
 .ship-sms-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
 .ship-sms-showsent { font-size: 13px; display: flex; gap: 4px; align-items: center; }
 .ship-sms-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
-.ship-sms-item { border: 1px solid #ddd; border-radius: 12px; padding: 10px; background: #fff; }
+/* 어두운 테마: 흰 카드 + 흰 글자로 이름·문자 미리보기가 안 보이던 문제 → 테마 색으로 */
+.ship-sms-item { border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: var(--bg-card); color: var(--text); transition: box-shadow .3s, border-color .3s; }
 .ship-sms-item.sent { opacity: .55; }
-.ship-sms-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 14px; }
-.ship-sms-no, .ship-sms-items { font-size: 12px; color: #666; }
-.ship-sms-body { white-space: pre-wrap; font: inherit; font-size: 13px; background: #f5f6f8; border-radius: 8px; padding: 8px; margin: 6px 0; }
+.ship-sms-item.next { border-color: var(--accent-strong); }
+.ship-sms-item.flash { box-shadow: 0 0 0 3px rgba(56, 189, 248, .45); }
+.ship-sms-nexttag { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.ship-sms-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 14px; color: var(--text); }
+.ship-sms-no, .ship-sms-items { font-size: 12px; color: var(--text-muted); }
+.ship-sms-body { white-space: pre-wrap; word-break: break-word; font: inherit; font-size: 13px; line-height: 1.5; color: var(--text); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin: 6px 0; }
+.ship-sms-check { color: var(--text); }
+.ship-sms-progress { position: relative; margin: 4px 0 10px; padding: 8px 10px; border-radius: 10px; background: var(--bg-elevated); border: 1px solid var(--border); font-size: 13px; overflow: hidden; }
+.ship-sms-progress span { position: relative; z-index: 1; }
+.ship-sms-progress i { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(74, 222, 128, .18); transition: width .4s; }
 .ship-sms-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ship-sms-actions a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .ship-sms-check { display: flex; gap: 4px; align-items: center; font-weight: 600; margin-left: auto; }
