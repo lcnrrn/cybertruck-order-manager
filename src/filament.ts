@@ -1,6 +1,6 @@
 import type { Order } from './types';
 import type { Product } from './products';
-import { parseOrderProducts, remainingQty } from './production';
+import { parseOrderProducts, remainingUnits } from './production';
 import { markSettingChanged } from './settingsMeta';
 
 const KEY = 'cybertruck-filament-v1';
@@ -217,7 +217,7 @@ export function orderSlots(
     const extraIdx = overrideIdxs(order, p.name);
     let count = Math.max(parts.length, extraIdx.length ? Math.max(...extraIdx) + 1 : 0);
     if (forEdit && count === 0) count = 1;
-    const qty = remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty;
+    const qty = remainingOnly ? remainingUnits(order, catalog.find((c) => c.name === p.name), p.qty, 'grams') : p.qty;
     for (let idx = 0; idx < count; idx++) {
       const part = parts[idx];
       const k = pickKey(p.name, idx);

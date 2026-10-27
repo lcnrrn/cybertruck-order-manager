@@ -19,7 +19,58 @@ export type Product = {
   minutes?: number;
   /** 필라멘트 구성 (여러 재질 가능) — 있으면 grams는 합계 */
   filaments?: { typeId: string; grams: number }[];
+  /** 구성품(부품) — 있으면 1세트 g·분은 구성품 합계 (grams·minutes·filaments 는 저장할 때 합계로 맞춰 둠) */
+  parts?: ProductPart[];
 };
+
+/** 세트 제품의 구성품 1종 — qty: 1세트에 들어가는 개수, grams/minutes: 1개당 (minutes 0 = 시간 미입력) */
+export interface ProductPart {
+  name: string;
+  qty: number;
+  grams: number;
+  minutes: number;
+}
+
+function normalizeParts(v: unknown): ProductPart[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : 0);
+  const out: ProductPart[] = [];
+  for (const x of v) {
+    if (!x || typeof x !== 'object') continue;
+    const o = x as Record<string, unknown>;
+    const name = typeof o.name === 'string' ? o.name.trim() : '';
+    if (!name || out.some((p) => p.name === name)) continue;
+    out.push({ name, qty: Math.max(1, Math.round(n(o.qty)) || 1), grams: n(o.grams), minutes: n(o.minutes) });
+  }
+  return out.length ? out : undefined;
+}
+
+/** 구성품 합계 (1세트) */
+export function partsTotals(parts: ProductPart[] | undefined): { grams: number; minutes: number; pieces: number; missingTime: string[] } {
+  const list = parts || [];
+  return {
+    grams: list.reduce((s, p) => s + p.qty * p.grams, 0),
+    minutes: list.reduce((s, p) => s + p.qty * p.minutes, 0),
+    pieces: list.reduce((s, p) => s + p.qty, 0),
+    missingTime: list.filter((p) => !(p.minutes > 0)).map((p) => p.name),
+  };
+}
+
+/** 구성품이 있으면 grams·minutes·filaments(재질 비율 유지)를 구성품 합계로 맞춤 — 옛 버전·필라멘트 차감·원가 계산이 그대로 합계를 씀 */
+export function withPartTotals(p: Product): Product {
+  if (!p.parts?.length) return p;
+  const t = partsTotals(p.parts);
+  const next: Product = { ...p, grams: Math.round(t.grams * 100) / 100, minutes: Math.round(t.minutes) };
+  const fil = p.filaments || [];
+  if (fil.length) {
+    const sum = fil.reduce((s, f) => s + (f.grams > 0 ? f.grams : 0), 0);
+    next.filaments = fil.map((f, i) => ({
+      typeId: f.typeId,
+      grams: Math.round((sum > 0 ? ((f.grams > 0 ? f.grams : 0) / sum) * t.grams : i === 0 ? t.grams : 0) * 100) / 100,
+    }));
+  }
+  return next;
+}
 
 /** Dark-theme-friendly swatch palette (~12) for product chips. */
 export const PRODUCT_COLOR_PALETTE: ProductColor[] = [
@@ -94,6 +145,7 @@ export function normalizeProducts(list: unknown): Product[] | null {
     let grams: number | undefined;
     let minutes: number | undefined;
     let filaments: { typeId: string; grams: number }[] | undefined;
+    let parts: ProductPart[] | undefined;
     if (typeof item === 'string') {
       name = item.trim();
     } else if (item && typeof item === 'object') {
@@ -103,6 +155,7 @@ export function normalizeProducts(list: unknown): Product[] | null {
       if (typeof o.price === 'number' && Number.isFinite(o.price) && o.price >= 0) price = o.price;
       if (typeof o.grams === 'number' && Number.isFinite(o.grams) && o.grams >= 0) grams = o.grams;
       if (typeof o.minutes === 'number' && Number.isFinite(o.minutes) && o.minutes >= 0) minutes = o.minutes;
+      parts = normalizeParts(o.parts);
       if (Array.isArray(o.filaments)) {
         filaments = (o.filaments as unknown[])
           .filter((f): f is { typeId: string; grams: number } =>
@@ -117,6 +170,7 @@ export function normalizeProducts(list: unknown): Product[] | null {
     if (grams !== undefined) p.grams = grams;
     if (minutes !== undefined) p.minutes = minutes;
     if (filaments && filaments.length) p.filaments = filaments;
+    if (parts) p.parts = parts;
     out.push(p);
     i += 1;
   }
@@ -162,7 +216,7 @@ export function setProducts(list: Product[]): void {
   const normalized = normalizeProducts(list);
   if (!normalized) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized.map(withPartTotals)));
     markSettingChanged('products');
   } catch {
     /* ignore */
@@ -384,3 +438,4 @@ export function joinItems(selected: string[], note: string, qty?: Record<string,
   if (n) parts.push(n);
   return parts.join(' / ');
 }
+

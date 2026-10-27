@@ -1,6 +1,6 @@
 import { markSettingChanged as _markProd } from './settingsMeta';
 import type { Order } from './types';
-import { scoreCatalogMatch, stripItemPrices, type Product } from './products';
+import { scoreCatalogMatch, stripItemPrices, type Product, type ProductPart } from './products';
 
 export const SHIPPING_NAME = '우체국 택배';
 
@@ -147,6 +147,107 @@ export function remainingQty(order: Pick<Order, 'doneMap'>, key: string, qty: nu
   return Math.max(0, qty - Math.max(0, Math.floor(order.doneMap?.[key] || 0)));
 }
 
+/* ───────── 구성품(세트) 제작 진행 ─────────
+ * R 열 d(doneMap) 에 새 키만 추가 — 옛 키 「제품명」(완성 세트 수)은 그대로 유지:
+ *   「제품명::구성품」 = 이 주문에서 만든 구성품 개수 (세트 수량 × 1세트 개수까지)
+ *   「제품명::%」     = 구성품 기준 진행률(g 가중, 1~99) — 조회 페이지가 Apps Script 수정 없이 읽음
+ * 모든 구성품이 다 차야 「제품명」 완성 세트 수가 올라감.
+ */
+export const PART_SEP = '::';
+export const PART_PCT = '%';
+export function partKey(product: string, part: string): string {
+  return `${product}${PART_SEP}${part}`;
+}
+export function pctKey(product: string): string {
+  return `${product}${PART_SEP}${PART_PCT}`;
+}
+
+export function productComponents(p: Product | undefined): ProductPart[] {
+  return (p?.parts || []).filter((x) => x && x.name && x.qty > 0);
+}
+
+export interface PartProgress {
+  name: string;
+  perSet: number;
+  need: number;
+  done: number;
+  grams: number;
+  minutes: number;
+}
+
+/** 주문 1건의 한 세트 제품 구성품 진행 (옛 완료 체크가 있으면 그만큼은 다 만든 걸로) */
+export function orderPartProgress(order: Pick<Order, 'doneMap'>, prod: Product, qty: number): PartProgress[] {
+  const setsDone = Math.max(0, Math.min(qty, Math.floor(order.doneMap?.[prod.name] || 0)));
+  return productComponents(prod).map((pt) => {
+    const need = pt.qty * qty;
+    const raw = Math.max(0, Math.floor(order.doneMap?.[partKey(prod.name, pt.name)] || 0));
+    return { name: pt.name, perSet: pt.qty, need, done: Math.min(need, Math.max(raw, setsDone * pt.qty)), grams: pt.grams, minutes: pt.minutes };
+  });
+}
+
+function partsPct(prog: PartProgress[]): number {
+  const w = (x: PartProgress) => (x.grams > 0 ? x.grams : 1);
+  const tot = prog.reduce((s, x) => s + x.need * w(x), 0);
+  const done = prog.reduce((s, x) => s + x.done * w(x), 0);
+  return tot > 0 ? (done / tot) * 100 : 0;
+}
+
+/**
+ * 구성품 개수 지정 → 새 doneMap. part=null 이면 세트 수(count)로 모든 구성품을 맞춤.
+ * minSets: 이미 발송에 들어간 세트 수 (그 아래로는 못 내림)
+ */
+export function applyPartCount(
+  doneMap: Record<string, number> | undefined,
+  prod: Product,
+  qty: number,
+  part: string | null,
+  count: number,
+  minSets = 0,
+): Record<string, number> {
+  const next: Record<string, number> = { ...(doneMap || {}) };
+  const prog = orderPartProgress({ doneMap }, prod, qty);
+  if (!prog.length) {
+    const c = Math.max(minSets, Math.min(qty, Math.max(0, Math.floor(count))));
+    if (c > 0) next[prod.name] = c;
+    else delete next[prod.name];
+    return next;
+  }
+  delete next[prod.name];
+  const now = prog.map((x) => {
+    let d = x.done;
+    if (part === null) d = Math.max(0, Math.min(qty, Math.floor(count))) * x.perSet;
+    else if (x.name === part) d = Math.max(0, Math.min(x.need, Math.floor(count)));
+    return { ...x, done: d };
+  });
+  let sets = Math.min(qty, ...now.map((x) => Math.floor(x.done / x.perSet)));
+  if (sets < minSets) {
+    sets = Math.min(qty, minSets);
+    for (const x of now) x.done = Math.max(x.done, sets * x.perSet);
+  }
+  for (const x of now) {
+    const k = partKey(prod.name, x.name);
+    if (x.done > 0) next[k] = x.done;
+    else delete next[k];
+  }
+  if (sets > 0) next[prod.name] = sets;
+  const pct = Math.round(partsPct(now));
+  const pk = pctKey(prod.name);
+  if (sets < qty && pct > 0) next[pk] = Math.min(99, Math.max(1, pct));
+  else delete next[pk];
+  return next;
+}
+
+/** 남은 분량을 「세트 몇 개 분」으로 (구성품 g 또는 분 가중, 소수) — 구성품 없으면 남은 개수 */
+export function remainingUnits(order: Pick<Order, 'doneMap'>, prod: Product | undefined, qty: number, by: 'grams' | 'minutes'): number {
+  const base = remainingQty(order, prod?.name || '', qty);
+  if (!prod || !productComponents(prod).length) return base;
+  const prog = orderPartProgress(order, prod, qty);
+  const w = (x: PartProgress) => (by === 'grams' ? x.grams : x.minutes);
+  const perSet = prog.reduce((s, x) => s + x.perSet * w(x), 0);
+  if (perSet <= 0) return base;
+  return prog.reduce((s, x) => s + (x.need - x.done) * w(x), 0) / perSet;
+}
+
 export function buildProductionSummary(orders: Order[], catalog: Product[]): ProductionSummary {
   const names = catalog.map((c) => c.name);
   const map = new Map<string, ProductionRow>();
@@ -211,8 +312,8 @@ export function orderGrams(order: Pick<Order, 'items' | 'doneMap' | 'filamentGra
   const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
   let sum = 0;
   for (const p of r.products) {
-    const qty = remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty;
     const prod = catalog.find((c) => c.name === p.name);
+    const qty = remainingOnly ? remainingUnits(order, prod, p.qty, 'grams') : p.qty;
     const parts: number[] = prod?.filaments?.length
       ? prod.filaments.map((f) => (Number.isFinite(f.grams) && f.grams > 0 ? f.grams : 0))
       : prod?.grams
@@ -287,7 +388,7 @@ export function orderMinutes(order: Order, catalog: Product[], remainingOnly = f
   let sum = 0;
   for (const p of r.products) {
     const prod = catalog.find((c) => c.name === p.name);
-    sum += (prod?.minutes || 0) * (remainingOnly ? remainingQty(order, p.name, p.qty) : p.qty);
+    sum += (prod?.minutes || 0) * (remainingOnly ? remainingUnits(order, prod, p.qty, 'minutes') : p.qty);
   }
   return sum;
 }
@@ -326,6 +427,17 @@ export interface ProductLoad {
   grams: number;
   minutes: number;
   suspicious: boolean;
+  /** 세트 제품이면 남은 구성품별 개수·g·분 */
+  parts?: PartLoad[];
+}
+
+export interface PartLoad {
+  name: string;
+  left: number;
+  grams: number;
+  minutes: number;
+  /** 1개당 시간 미입력 */
+  noTime: boolean;
 }
 
 function catalogGramsPerUnit(p: Product | undefined): number {
@@ -346,12 +458,25 @@ export function pendingLoadByProduct(orders: Order[], catalog: Product[]): Produ
       const prod = catalog.find((c) => c.name === p.name);
       const g = catalogGramsPerUnit(prod);
       const mi = prod?.minutes || 0;
+      const comps = productComponents(prod);
       const row = m.get(p.name) ?? {
         name: p.name, qty: 0, gramsPerUnit: g, minutesPerUnit: mi, grams: 0, minutes: 0,
-        suspicious: g > SUSPICIOUS_GRAMS || mi > SUSPICIOUS_MINUTES,
+        // 구성품으로 나눠 둔 세트 제품은 큰 값이 정상
+        suspicious: !comps.length && (g > SUSPICIOUS_GRAMS || mi > SUSPICIOUS_MINUTES),
       };
       row.qty += q;
-      row.minutes += mi * q;
+      row.minutes += mi * remainingUnits(o, prod, p.qty, 'minutes');
+      if (comps.length && prod) {
+        row.parts = row.parts || comps.map((c) => ({ name: c.name, left: 0, grams: 0, minutes: 0, noTime: !(c.minutes > 0) }));
+        for (const x of orderPartProgress(o, prod, p.qty)) {
+          const pl = row.parts.find((y) => y.name === x.name);
+          if (!pl) continue;
+          const left = x.need - x.done;
+          pl.left += left;
+          pl.grams += left * x.grams;
+          pl.minutes += left * x.minutes;
+        }
+      }
       m.set(p.name, row);
     }
   }
