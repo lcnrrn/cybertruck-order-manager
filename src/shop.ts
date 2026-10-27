@@ -1,4 +1,5 @@
-import { SETTING_LS_KEYS, markSettingChanged } from './settingsMeta';
+import { useEffect, useState } from 'react';
+import { SETTING_LS_KEYS, SETTINGS_APPLIED_EVENT, markSettingChanged } from './settingsMeta';
 import { BANK } from './buyer/config';
 
 /** 가게 설정 — 설정 탭 'shop' 행 (항목 단위 병합) */
@@ -47,4 +48,19 @@ export function bankInfo(s: ShopSettings = loadShop()): { bank: string; number: 
     number: s.bankNumber?.trim() || BANK.number,
     holder: s.bankHolder?.trim() || BANK.holder,
   };
+}
+
+/** 가게 설정 (다른 기기에서 바뀌어도 다시 읽음) */
+export function useShopSettings(): ShopSettings {
+  const [s, setS] = useState<ShopSettings>(() => loadShop());
+  useEffect(() => {
+    const on = () => setS(loadShop());
+    window.addEventListener(SHOP_CHANGED_EVENT, on);
+    window.addEventListener(SETTINGS_APPLIED_EVENT, on);
+    return () => {
+      window.removeEventListener(SHOP_CHANGED_EVENT, on);
+      window.removeEventListener(SETTINGS_APPLIED_EVENT, on);
+    };
+  }, []);
+  return s;
 }

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Check, ClipboardCheck, Loader, MessageSquare, ReceiptText, Send, TriangleAlert } from 'lucide-react';
 import type { Order, Shipment } from '../types';
 import { shipmentLabel } from '../shipments';
 import { formatWon } from '../production';
@@ -22,9 +23,53 @@ interface Props {
   onRequest: (r: EpostRequest) => void;
   onCancelShip: (orderId: string, shipId: string) => void;
   onClose: () => void;
+  /** 발송 문자 화면으로 */
+  onOpenSms?: () => void;
 }
 
-export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose }: Props) {
+function hm(ms?: number): string {
+  if (!ms) return '';
+  const d = new Date(ms);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 접수 요청 진행 단계: 요청 → 처리 중 → 접수 완료 → 송장 → 발송 문자 */
+function RequestTimeline({ request, orders, onOpenSms }: { request: EpostRequest; orders: Order[]; onOpenSms?: () => void }) {
+  const ids = new Set(request.shipmentIds);
+  const ships: Shipment[] = [];
+  for (const o of orders) for (const s of o.shipments || []) if (ids.has(s.id)) ships.push(s);
+  const total = ships.length || request.shipmentIds.length;
+  const tracked = ships.filter((s) => s.trackingNumber).length;
+  const sms = ships.filter((s) => s.smsSent).length;
+  const st = request.status;
+  const err = st === 'error';
+  const steps = [
+    { icon: Send, label: '요청', sub: hm(request.requestedAt), state: 'done' },
+    { icon: err ? TriangleAlert : Loader, label: err ? '실패' : '처리 중', sub: err ? '' : hm(request.startedAt), state: err ? 'err' : st === 'pending' ? 'wait' : st === 'running' ? 'now' : 'done' },
+    { icon: ClipboardCheck, label: '접수 완료', sub: st === 'done' ? hm(request.finishedAt) : '', state: st === 'done' ? 'done' : 'wait' },
+    { icon: ReceiptText, label: '송장', sub: st === 'done' ? `${tracked}/${total}` : '', state: st !== 'done' ? 'wait' : tracked >= total && total > 0 ? 'done' : 'now' },
+    { icon: MessageSquare, label: '발송 문자', sub: st === 'done' && tracked ? `${sms}/${tracked}` : '', state: !tracked ? 'wait' : sms >= tracked ? 'done' : 'now' },
+  ];
+  const smsLeft = ships.filter((s) => s.trackingNumber && !s.smsSent).length;
+  return (
+    <div className="ep-timeline">
+      <ol>
+        {steps.map((x, i) => (
+          <li key={i} className={`ep-step ${x.state}`}>
+            <span className="ep-dot">{x.state === 'done' ? <Check size={14} strokeWidth={3} /> : <x.icon size={14} />}</span>
+            <b>{x.label}</b>
+            {x.sub ? <small>{x.sub}</small> : null}
+          </li>
+        ))}
+      </ol>
+      {smsLeft > 0 && onOpenSms ? (
+        <button type="button" className="btn btn-secondary btn-wide" onClick={onOpenSms}><MessageSquare size={15} />송장 나온 {smsLeft}건 발송 문자 보내기</button>
+      ) : null}
+    </div>
+  );
+}
+
+export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose, onOpenSms }: Props) {
   const [confirm, setConfirm] = useState<EpostMode | null>(null);
   const [pickupDate, setPickupDate] = useState(() => nextWeekday());
   const minDate = nextWeekday();
@@ -79,6 +124,7 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose }
           <small>요청 {fmtDate(request.requestedAt)} {new Date(request.requestedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</small>
         </div>
       )}
+      {request && <RequestTimeline request={request} orders={orders} onOpenSms={onOpenSms} />}
 
       {pending.length === 0 && (
         <>
