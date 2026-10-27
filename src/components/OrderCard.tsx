@@ -8,7 +8,7 @@ import { ProductBadges } from './ProductBadges';
 import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { PayBadge } from './PayBadge';
 import { avatarColor, statusPill } from './Dashboard';
-import { formatWon, orderAmount, orderItemProgress, progressTotals } from '../production';
+import { formatWon, orderAmount, orderItemProgress, orderPartProgress, productComponents, progressTotals } from '../production';
 
 interface Props {
   order: Order;
@@ -20,6 +20,8 @@ interface Props {
   onTogglePriority: (id: string) => void;
   onTogglePaid: (id: string) => void;
   onItemDone: (id: string, key: string, count: number) => void;
+  /** 세트 제품 구성품 개수 지정 */
+  onPartDone?: (id: string, product: string, part: string, count: number) => void;
   onShip: (id: string, items: Record<string, number>, mode?: 'counter' | 'visit') => void;
   onCancelShip: (id: string, shipId: string) => void;
 }
@@ -34,6 +36,7 @@ export function OrderCard({
   onTogglePriority,
   onTogglePaid,
   onItemDone,
+  onPartDone,
   onShip,
   onCancelShip,
 }: Props) {
@@ -96,6 +99,38 @@ export function OrderCard({
             </div>
             {progress.map((it) => {
               const full = it.done >= it.qty;
+              const prod = products.find((p) => p.name === it.key);
+              if (prod && productComponents(prod).length && onPartDone) {
+                const parts = orderPartProgress(order, prod, it.qty);
+                const need = parts.reduce((s, x) => s + x.need, 0);
+                const done = parts.reduce((s, x) => s + x.done, 0);
+                return (
+                  <div key={it.key} className={`make-item make-set ${full ? 'done' : ''}`}>
+                    <div className="make-set-head">
+                      <span className="make-box">{full ? '✓' : ''}</span>
+                      <span className="make-label">{it.label}</span>
+                      <span className="make-qty">{it.qty > 1 ? `${it.done}/${it.qty}세트 · ` : ''}{full ? '완성' : `${done}/${need}개`}</span>
+                    </div>
+                    {parts.map((pt) => {
+                      const set = (n: number) => onPartDone(order.id, it.key, pt.name, n);
+                      const ok = pt.done >= pt.need;
+                      return (
+                        <div key={pt.name} className={`part-row ${ok ? 'ok' : ''}`}>
+                          <span className="part-name">{pt.name}</span>
+                          <span className="part-count"><b>{pt.done}</b>/{pt.need}</span>
+                          <span className="part-bar"><i style={{ width: `${pt.need ? (pt.done / pt.need) * 100 : 0}%` }} /></span>
+                          <span className="part-btns">
+                            <button type="button" className="btn-icon" aria-label={`${pt.name} 1개 빼기`} disabled={pt.done <= 0} onClick={() => set(pt.done - 1)}>−</button>
+                            <button type="button" className="btn-icon" aria-label={`${pt.name} 1개 더하기`} disabled={ok} onClick={() => set(pt.done + 1)}>＋</button>
+                            {pt.need >= 4 ? <button type="button" className="part-plus" disabled={ok} onClick={() => set(pt.done + 4)}>+4</button> : null}
+                            {pt.need >= 8 ? <button type="button" className="part-plus" disabled={ok} onClick={() => set(pt.done + 8)}>+8</button> : null}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              }
               return (
                 <div key={it.key} className={`make-item ${full ? 'done' : ''}`}>
                   <button

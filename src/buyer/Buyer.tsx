@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { BANK, CATALOG, SHIPPING, epostTrackUrl } from './config';
 import { apiReady, lookup, shopInfo, submitOrder, type LookupOrder, type ShopInfo } from './api';
-import { orderItemProgress, progressTotals } from '../production';
+import { orderItemProgress, pctKey, progressTotals } from '../production';
 import { TruckArt } from '../ui/Art';
 import './buyer.css';
 
@@ -299,7 +299,16 @@ function LookupPage() {
         const shipped = o.shipments.filter((sh) => sh.registered || sh.trackingNumber);
         const extraTrack = o.trackingNumber && !o.shipments.some((sh) => sh.trackingNumber === o.trackingNumber) ? o.trackingNumber : null;
         const delivered = o.shipments.length > 0 && o.shipments.filter((sh) => sh.trackingNumber).every((sh) => sh.delivered) && o.shipments.some((sh) => sh.delivered);
-        const pct = tot.total ? Math.round((tot.done / tot.total) * 100) : 0;
+        // 세트 제품: 앱이 R 열 d 에 함께 적는 구성품 진행률(「제품::%」)로 부분 진행까지 반영
+        const partPct = (key: string, qty: number, done: number): number | null => {
+          const v = o.done?.[pctKey(key)];
+          return done < qty && typeof v === 'number' && v > 0 ? Math.min(99, v) : null;
+        };
+        const doneUnits = (prog || []).reduce((s2, p) => {
+          const pp = partPct(p.key, p.qty, p.done);
+          return s2 + (pp !== null ? Math.max(p.done, (pp / 100) * p.qty) : p.done);
+        }, 0);
+        const pct = tot.total ? Math.round((doneUnits / tot.total) * 100) : 0;
         return (
           <section className="b-card b-order" key={o.no + (o.createdAt || '')}>
             <div className="b-row">
@@ -329,10 +338,10 @@ function LookupPage() {
                   {prog.map((p) => (
                     <li key={p.key} className={p.done >= p.qty ? 'full' : ''}>
                       <span className="b-pitem-name">
-                        {shop.images[p.key] ? <img src={shop.images[p.key]} alt="" /> : <i className={p.done >= p.qty ? 'b-pi done' : p.done > 0 ? 'b-pi make' : 'b-pi'} />}
+                        {shop.images[p.key] ? <img src={shop.images[p.key]} alt="" /> : <i className={p.done >= p.qty ? 'b-pi done' : p.done > 0 || partPct(p.key, p.qty, p.done) !== null ? 'b-pi make' : 'b-pi'} />}
                         {p.label}
                       </span>
-                      <b>{p.done >= p.qty ? '완료' : `${p.done}/${p.qty}`}</b>
+                      <b>{p.done >= p.qty ? '완료' : partPct(p.key, p.qty, p.done) !== null ? `${p.qty > 1 ? `${p.done}/${p.qty} · ` : ''}${partPct(p.key, p.qty, p.done)}%` : `${p.done}/${p.qty}`}</b>
                     </li>
                   ))}
                 </ul>

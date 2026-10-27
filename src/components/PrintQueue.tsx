@@ -5,6 +5,8 @@ import { getProductColor, type Product } from '../products';
 import {
   formatDuration,
   loadProductionSettings,
+  orderPartProgress,
+  productComponents,
   parseOrderProducts,
   pendingLoadByProduct,
   remainingQty,
@@ -18,6 +20,8 @@ interface Props {
   products: Product[];
   /** 그 주문의 그 품목 완료 개수를 count 로 */
   onDone: (orderId: string, key: string, count: number) => void;
+  /** 세트 제품 구성품 개수 지정 */
+  onPartDone?: (orderId: string, product: string, part: string, count: number) => void;
   onOpenProducts: () => void;
 }
 
@@ -32,7 +36,7 @@ function byQueue(a: Order, b: Order): number {
   return Number(!!b.priority) - Number(!!a.priority) || (a.createdAt || a.updatedAt) - (b.createdAt || b.updatedAt);
 }
 
-export function PrintQueue({ orders, products, onDone, onOpenProducts }: Props) {
+export function PrintQueue({ orders, products, onDone, onPartDone, onOpenProducts }: Props) {
   const images = useProductImages();
   const [showPlan, setShowPlan] = useState(true);
   const settings = loadProductionSettings();
@@ -56,6 +60,26 @@ export function PrintQueue({ orders, products, onDone, onOpenProducts }: Props) 
     return m;
   }, [active, names]);
 
+  /** 구성품별 다음 주문 (「제품::구성품」 → 주문·만든 개수·남은 개수) */
+  const nextPart = useMemo(() => {
+    const m = new Map<string, { order: Order; done: number; left: number; waiting: number }>();
+    for (const o of active) {
+      for (const p of parseOrderProducts(o.items, names).products) {
+        const prod = products.find((c) => c.name === p.name);
+        if (!prod || !productComponents(prod).length) continue;
+        for (const x of orderPartProgress(o, prod, p.qty)) {
+          const left = x.need - x.done;
+          if (left <= 0) continue;
+          const k = `${p.name}::${x.name}`;
+          const cur = m.get(k);
+          if (!cur) m.set(k, { order: o, done: x.done, left, waiting: 1 });
+          else cur.waiting += 1;
+        }
+      }
+    }
+    return m;
+  }, [active, names, products]);
+
   /** 하루 단위 출력 계획 (프린터 대수 × 하루 가동 시간) */
   const plan = useMemo(() => {
     const cap = Math.max(1, settings.printers) * Math.max(0.5, settings.hoursPerDay) * 60;
@@ -63,8 +87,14 @@ export function PrintQueue({ orders, products, onDone, onOpenProducts }: Props) 
     for (const o of active)
       for (const p of parseOrderProducts(o.items, names).products) {
         if (p.name === SHIPPING_NAME) continue;
+        const prod = products.find((c) => c.name === p.name);
+        if (prod && productComponents(prod).length) {
+          for (const x of orderPartProgress(o, prod, p.qty))
+            for (let i = x.done; i < x.need; i++) units.push({ order: o, name: `${p.name} · ${x.name}`, minutes: x.minutes });
+          continue;
+        }
         const left = remainingQty(o, p.name, p.qty);
-        const mi = products.find((c) => c.name === p.name)?.minutes || 0;
+        const mi = prod?.minutes || 0;
         for (let i = 0; i < left; i++) units.push({ order: o, name: p.name, minutes: mi });
       }
     const days: { minutes: number; items: Map<string, { qty: number; orders: Set<string> }> }[] = [];
@@ -128,7 +158,34 @@ export function PrintQueue({ orders, products, onDone, onOpenProducts }: Props) 
                 </div>
                 <div className="pq-bar"><i style={{ width: `${Math.max(4, (l.minutes / maxMin) * 100)}%` }} /></div>
               </div>
-              {nx ? (
+              {l.parts ? (
+                <ul className="pq-parts">
+                  {l.parts.map((pt) => {
+                    const np = nextPart.get(`${l.name}::${pt.name}`);
+                    const add = (n: number) => np && onPartDone?.(np.order.id, l.name, pt.name, np.done + n);
+                    return (
+                      <li key={pt.name} className={pt.left <= 0 ? 'ok' : ''}>
+                        <div className="pq-part-main">
+                          <b>{pt.name}</b> <span className="pq-qty">남은 {pt.left}개</span>
+                          <div className="pq-meta">
+                            <span><Timer size={12} />{pt.noTime ? <em className="warn-text">시간 미입력</em> : formatDuration(pt.minutes)}</span>
+                            <span><Weight size={12} />{Math.round(pt.grams).toLocaleString('ko-KR')}g</span>
+                            {np ? <span className="pq-next">다음: {personName(np.order.name)}{np.order.priority ? ' ★' : ''} {np.done}/{np.done + np.left}</span> : null}
+                          </div>
+                        </div>
+                        {np && onPartDone ? (
+                          <span className="pq-part-btns">
+                            <button type="button" className="pq-plus" onClick={() => add(1)} aria-label={`${pt.name} 1개 완료`}>+1</button>
+                            {np.left >= 4 ? <button type="button" className="pq-plus" onClick={() => add(4)}>+4</button> : null}
+                            {np.left >= 8 ? <button type="button" className="pq-plus" onClick={() => add(8)}>+8</button> : null}
+                          </span>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+              {nx && !l.parts ? (
                 <button
                   type="button"
                   className="pq-check"
@@ -144,7 +201,7 @@ export function PrintQueue({ orders, products, onDone, onOpenProducts }: Props) 
           );
         })}
       </ul>
-      <p className="muted-line">✓ 누르면 가장 오래된(우선 ★ 먼저) 주문의 그 제품 1개가 완료 체크돼요. 잘못 눌렀으면 주문 카드에서 체크를 풀면 돼요.</p>
+      <p className="muted-line">✓ 누르면 가장 오래된(우선 ★ 먼저) 주문의 그 제품 1개가 완료 체크돼요. 세트 제품은 구성품 +1 / +4 / +8 로 한 판에 뽑은 만큼 올려요. 잘못 눌렀으면 주문 카드에서 − 로 빼면 돼요.</p>
 
       <div className="pq-plan-head">
         <h4><CalendarClock size={15} />출력 계획 <small>프린터 {settings.printers}대 × 하루 {settings.hoursPerDay}시간 기준</small></h4>
@@ -157,7 +214,7 @@ export function PrintQueue({ orders, products, onDone, onOpenProducts }: Props) 
               <div className="pq-day"><b>{i + 1}일차</b><small>{formatDuration(d.minutes)}{d.minutes > plan.cap ? ' · 하루 넘음' : ''}</small></div>
               <div className="pq-chips">
                 {[...d.items.entries()].map(([name, it]) => {
-                  const c = getProductColor(name, products);
+                  const c = getProductColor(name.split(' · ')[0], products);
                   return (
                     <span key={name} className="pq-chip" style={{ borderColor: c.border }} title={[...it.orders].join(', ')}>
                       {name} <b>×{it.qty}</b>

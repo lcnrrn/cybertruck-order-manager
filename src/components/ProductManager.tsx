@@ -1,11 +1,14 @@
 import { SUSPICIOUS_GRAMS, SUSPICIOUS_MINUTES, formatDuration, loadProductionSettings, saveProductionSettings } from '../production';
-import { ImagePlus, TriangleAlert, X } from 'lucide-react';
+import { ImagePlus, Layers, Plus, TriangleAlert, X } from 'lucide-react';
 import { MAX_IMAGES_JSON, fileToThumb, imagesSize, renameProductImage, setProductImage, useProductImages } from '../productImages';
 import { useState } from 'react';
 import {
   DEFAULT_PRODUCTS,
   PRODUCT_COLOR_PALETTE,
+  partsTotals,
+  withPartTotals,
   type Product,
+  type ProductPart,
   type ProductColor,
 } from '../products';
 import { productParts, swatchOf, typeLabel, type FilamentState } from '../filament';
@@ -22,7 +25,9 @@ function sameColor(a: ProductColor, b: ProductColor): boolean {
   return a.bg === b.bg && a.border === b.border && a.text === b.text;
 }
 
-export function ProductManager({ products, onChange, onClose, filament, onOpenFilament }: Props) {
+export function ProductManager({ products, onChange: rawOnChange, onClose, filament, onOpenFilament }: Props) {
+  // 구성품이 있으면 g·분·재질 비율을 구성품 합계로 맞춰서 저장
+  const onChange = (list: Product[]) => rawOnChange(list.map(withPartTotals));
   const [prodSet, setProdSet] = useState(() => loadProductionSettings());
   const typeOpts = (filament?.types || []).filter((t) => !t.hidden);
   const images = useProductImages();
@@ -59,6 +64,23 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
         return next;
       }),
     );
+  }
+
+  function setComponents(name: string, parts: ProductPart[] | null) {
+    onChange(
+      products.map((p) => {
+        if (p.name !== name) return p;
+        const next = { ...p };
+        if (parts && parts.length) next.parts = parts;
+        else delete next.parts;
+        return next;
+      }),
+    );
+  }
+
+  function numIn(raw: string): number {
+    const n = Number(raw.replace(/[^\d.]/g, ''));
+    return Number.isFinite(n) && n >= 0 ? n : 0;
   }
 
   const [draft, setDraft] = useState('');
@@ -346,6 +368,12 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                     aria-label={`${name} 판매가`}
                   />
                 </label>
+                {product.parts?.length ? (
+                  <label>
+                    <span>출력 시간(1세트)</span>
+                    <input readOnly value={formatDuration(product.minutes || 0) + (partsTotals(product.parts).missingTime.length ? '+' : '')} aria-label={`${name} 1세트 출력 시간 (구성품 합계)`} />
+                  </label>
+                ) : (
                 <label>
                   <span>출력 시간(분/1개)</span>
                   <input
@@ -356,15 +384,120 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                     aria-label={`${name} 출력 시간`}
                   />
                 </label>
+                )}
               </div>
-              {(product.grams || 0) > SUSPICIOUS_GRAMS || (product.minutes || 0) > SUSPICIOUS_MINUTES ? (
+              {(() => {
+                const parts = product.parts || [];
+                if (!parts.length) {
+                  if (name === '우체국 택배') return null;
+                  return (
+                    <button
+                      type="button"
+                      className="btn btn-ghost source-mgr-btn pm-split-btn"
+                      onClick={() =>
+                        setComponents(name, [{ name: `${name} 조각`, qty: 1, grams: product.grams || 0, minutes: product.minutes || 0 }])
+                      }
+                    >
+                      <Layers size={14} /> 구성품으로 나누기 (세트 제품)
+                    </button>
+                  );
+                }
+                const t = partsTotals(parts);
+                const upd = (pi: number, patch: Partial<ProductPart>) => setComponents(name, parts.map((x, j) => (j === pi ? { ...x, ...patch } : x)));
+                return (
+                  <div className="pm-parts">
+                    <div className="pm-parts-head">
+                      <span><Layers size={14} /> 구성품 <small>(1세트에 들어가는 것)</small></span>
+                      <b className="pm-parts-total">
+                        1세트 {Math.round(t.grams).toLocaleString('ko-KR')}g · {formatDuration(t.minutes)}{t.missingTime.length ? '+' : ''}
+                      </b>
+                    </div>
+                    {parts.map((pt, pi) => (
+                      <div className={`pm-part ${pt.minutes > 0 ? '' : 'no-time'}`} key={`${pi}-${pt.name}-${pt.qty}-${pt.grams}-${pt.minutes}`}>
+                        <div className="pm-part-top">
+                          <input
+                            className="pm-part-name"
+                            defaultValue={pt.name}
+                            aria-label={`${name} 구성품 ${pi + 1} 이름`}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (!v || v === pt.name) {
+                                e.target.value = pt.name;
+                                return;
+                              }
+                              if (parts.some((x, j) => j !== pi && x.name === v)) {
+                                window.alert('같은 이름의 구성품이 이미 있어요.');
+                                e.target.value = pt.name;
+                                return;
+                              }
+                              upd(pi, { name: v });
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-danger-ghost source-mgr-btn"
+                            aria-label={`${pt.name} 구성품 빼기`}
+                            onClick={() => {
+                              if (window.confirm(`「${pt.name}」 구성품을 뺄까요?`)) setComponents(name, parts.filter((_, j) => j !== pi));
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="pm-part-nums">
+                          <label>
+                            <span>1세트에</span>
+                            <span className="pm-unit-in"><input inputMode="numeric" defaultValue={pt.qty} onBlur={(e) => upd(pi, { qty: Math.max(1, Math.round(numIn(e.target.value)) || 1) })} aria-label={`${pt.name} 1세트 개수`} /><em>개</em></span>
+                          </label>
+                          <label>
+                            <span>1개당</span>
+                            <span className="pm-unit-in"><input inputMode="decimal" defaultValue={pt.grams || ''} placeholder="0" onBlur={(e) => upd(pi, { grams: numIn(e.target.value) })} aria-label={`${pt.name} 1개 g`} /><em>g</em></span>
+                          </label>
+                          <label>
+                            <span>1개당</span>
+                            <span className="pm-unit-in"><input inputMode="decimal" defaultValue={pt.minutes || ''} placeholder="시간 미입력" onBlur={(e) => upd(pi, { minutes: numIn(e.target.value) })} aria-label={`${pt.name} 1개 출력 시간(분)`} /><em>분</em></span>
+                          </label>
+                        </div>
+                        <div className="pm-part-sum">
+                          = {Math.round(pt.qty * pt.grams).toLocaleString('ko-KR')}g · {pt.minutes > 0 ? formatDuration(pt.qty * pt.minutes) : <em className="warn-text">시간 미입력</em>}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="pm-parts-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost source-mgr-btn"
+                        onClick={() => {
+                          let n = parts.length + 1;
+                          while (parts.some((x) => x.name === `구성품 ${n}`)) n += 1;
+                          setComponents(name, [...parts, { name: `구성품 ${n}`, qty: 1, grams: 0, minutes: 0 }]);
+                        }}
+                      >
+                        <Plus size={14} /> 구성품 추가
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost source-mgr-btn"
+                        onClick={() => {
+                          if (window.confirm('구성품을 모두 없애고 1개 단위 제품으로 되돌릴까요? (지금 g·분 합계는 그대로 남아요)')) setComponents(name, null);
+                        }}
+                      >
+                        구성품 없애기
+                      </button>
+                    </div>
+                    {t.missingTime.length ? <p className="hint warn-text">시간 미입력: {t.missingTime.join(', ')} — 슬라이서에서 1개 출력 시간(분)을 확인해서 넣어줘</p> : null}
+                    <p className="hint">숫자는 칸을 벗어나면 저장돼요. 주문 카드·출력 큐에서 구성품마다 따로 체크하고, 모두 다 차면 세트 완성. 구성품 이름을 바꾸면 이미 체크한 개수는 0부터 다시 세요.</p>
+                  </div>
+                );
+              })()}
+              {!product.parts?.length && ((product.grams || 0) > SUSPICIOUS_GRAMS || (product.minutes || 0) > SUSPICIOUS_MINUTES) ? (
                 <p className="pm-outlier">
                   <TriangleAlert size={14} />
                   1개당 {(product.grams || 0).toLocaleString('ko-KR')}g · {formatDuration(product.minutes || 0)} — 다른 제품보다 훨씬 커요. 세트 전체 값이면 그대로 두고, 1개 값이 아니면 고쳐 주세요.
                 </p>
               ) : null}
               <div className="fil-parts">
-                <span className="hint">필라멘트 (1개당){typeOpts.length <= 1 && onOpenFilament ? ' — ' : ''}
+                <span className="hint">필라멘트 ({product.parts?.length ? '1세트 · 구성품 합계로 자동' : '1개당'}){typeOpts.length <= 1 && onOpenFilament ? ' — ' : ''}
                   {typeOpts.length <= 1 && onOpenFilament && (
                     <button type="button" className="btn-link" onClick={onOpenFilament}>재질·색상 종류 추가하기</button>
                   )}
@@ -377,7 +510,7 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                       {parts.map((part, pi) => {
                         const t = filament?.types.find((x) => x.id === part.typeId);
                         return (
-                          <div className="fil-row" key={`${pi}-${part.typeId}`}>
+                          <div className="fil-row" key={`${pi}-${part.typeId}-${part.grams}`}>
                             <i className="fil-dot" style={{ background: swatchOf(t) }} />
                             <select
                               className="grow"
@@ -392,6 +525,8 @@ export function ProductManager({ products, onChange, onClose, filament, onOpenFi
                               inputMode="decimal"
                               style={{ width: 80 }}
                               defaultValue={part.grams || ''}
+                              readOnly={!!product.parts?.length && parts.length === 1}
+                              title={product.parts?.length ? '구성품 합계로 자동 계산 (재질 여러 개면 비율)' : undefined}
                               placeholder="g"
                               onBlur={(e) => setParts(name, parts.map((x, j) => (j === pi ? { ...x, grams: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 } : x)))}
                               aria-label={`${name} 필라멘트 g`}
