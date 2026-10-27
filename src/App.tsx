@@ -10,7 +10,7 @@ import { getProducts, setProducts, type Product } from './products';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
-import { addShipment, attachTracking, cancelShipment, isFullyDelivered, isFullyShipped, pendingShipmentCount, setShipmentSms, smsPendingShipments } from './shipments';
+import { addShipment, attachTracking, cancelShipment, isFullyDelivered, isFullyShipped, pendingShipmentCount, setShipmentSms, shippedQty, smsPendingShipments } from './shipments';
 import { ShipSmsPanel } from './components/ShipSmsPanel';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
@@ -22,7 +22,7 @@ import { GoogleSettings } from './components/GoogleSettings';
 import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
 import { ProductionSummary } from './components/ProductionSummary';
-import { orderItemProgress } from './production';
+import { applyPartCount, orderItemProgress, parseOrderProducts, PART_SEP, productComponents } from './production';
 import { buildProductionSummary, formatDuration, isUnpaid, orderHasProduct, orderAmount, pendingMinutes, formatWon } from './production';
 import { SalesReport } from './components/SalesReport';
 import { FilamentInventory } from './components/FilamentInventory';
@@ -201,8 +201,25 @@ export default function App() {
     if (!blocked()) rawSetStatus(id, st);
   };
   const importOrders: typeof rawImportOrders = (list) => (blocked() ? 0 : rawImportOrders(list));
+  /** 세트 제품 구성품 개수 (part=null 이면 세트 수로 전체 맞춤) — R 열 d 에 「제품::구성품」 키로 저장 */
+  const setPartDone = (id: string, product: string, part: string | null, count: number) => {
+    if (blocked()) return;
+    const prod = products.find((p) => p.name === product);
+    if (!prod) return;
+    rawTransformOrder(id, (o) => {
+      const it = parseOrderProducts(o.items, products.map((p) => p.name)).products.find((x) => x.name === product);
+      if (!it) return null;
+      const doneMap = applyPartCount(o.doneMap, prod, it.qty, part, count, shippedQty(o)[product] || 0);
+      const next: Order = { ...o, doneMap, updatedAt: Date.now() };
+      if (!Object.keys(doneMap).length) delete next.doneMap;
+      if (Object.keys(doneMap).some((k) => k === product || k.startsWith(product + PART_SEP)) && o.status === '대기') next.status = '제작중';
+      return next;
+    });
+  };
   const setItemDone: typeof rawSetItemDone = (id, k, c) => {
-    if (!blocked()) rawSetItemDone(id, k, c);
+    if (blocked()) return;
+    if (productComponents(products.find((p) => p.name === k)).length) setPartDone(id, k, null, c);
+    else rawSetItemDone(id, k, c);
   };
   const transformOrder: typeof rawTransformOrder = (id, fn) => {
     if (!blocked()) rawTransformOrder(id, fn);
@@ -282,7 +299,8 @@ export default function App() {
   const handleProductsChange = useCallback((next: Product[]) => {
     if (blocked()) return;
     setProducts(next);
-    setProductsState(next);
+    // 구성품 합계(g·분)가 반영된 저장본으로
+    setProductsState(getProducts());
   }, []);
 
   const google = useGoogleSync({
@@ -482,6 +500,7 @@ export default function App() {
       if (target) updateOrder(id, { priority: !target.priority });
     },
     onItemDone: (id: string, key: string, count: number) => setItemDone(id, key, count),
+    onPartDone: (id: string, product: string, part: string, count: number) => setPartDone(id, product, part, count),
     onShip: (id: string, items: Record<string, number>, mode: 'counter' | 'visit' = 'counter') => {
       const names = products.map((p) => p.name);
       transformOrder(id, (o) => addShipment(o, items, orderItemProgress(o, names), Date.now(), mode));
@@ -723,7 +742,7 @@ export default function App() {
                   embedded
                 />
               </section>
-              <PrintQueue orders={orders} products={products} onDone={(id, key, count) => setItemDone(id, key, count)} onOpenProducts={() => setSheet('products')} />
+              <PrintQueue orders={orders} products={products} onDone={(id, key, count) => setItemDone(id, key, count)} onPartDone={setPartDone} onOpenProducts={() => setSheet('products')} />
               <h2 className="section-title">
                 <Hammer size={17} /> 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
               </h2>
