@@ -37,6 +37,12 @@ function catalog_() {
     .map(function (p) { return { name: String(p.name), price: Number(p.price) || 0 }; });
 }
 
+function shopBank_() {
+  var s = setting_('shop') || {};
+  if (!s.bankNumber) return null;
+  return { bank: String(s.bankName || ''), number: String(s.bankNumber || ''), holder: String(s.bankHolder || '') };
+}
+
 function digits_(s) { return String(s || '').replace(/\D/g, ''); }
 function clip_(s, n) { return String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n); }
 function normName_(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
@@ -106,6 +112,10 @@ function doPost(e) {
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (p.action === 'catalog') return json_({ ok: true, products: catalog_() });
+  // 구매자 주문 페이지 꾸미기용 (추가 기능 — 기존 응답은 그대로)
+  //  images: 설정 탭 'productImages' 행 {제품명: 작은 사진 dataURL}
+  //  bank:   설정 탭 'shop' 행의 입금 계좌 (원가 같은 다른 값은 내보내지 않음)
+  if (p.action === 'shop') return json_({ ok: true, images: setting_('productImages') || {}, bank: shopBank_() });
   if (p.action !== 'lookup') return json_({ ok: false, error: 'unknown action' });
 
   var name = normName_(p.name);

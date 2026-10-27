@@ -29,11 +29,14 @@ g.fetch = async (url: string, init?: { method?: string; body?: string }) => {
     tabs.set(t, []);
     return json({});
   }
-  const m = u.match(/^\/values\/([^!]+)!([A-Z0-9:]+)(:clear)?/);
+  if (u.startsWith('/values:batchGet?')) return json({ valueRanges: u.slice('/values:batchGet?'.length).split('&').map((kv) => ({ values: tabs.get(kv.replace(/^ranges=/, '').split('!')[0]) || [] })) });
+  if (u.startsWith('/values:batchUpdate')) { for (const d of JSON.parse(init!.body!).data) { const [tab, rg] = d.range.split('!'); const t = tabs.get(tab) || []; tabs.set(tab, t); const mm = rg.match(/^([A-Z])(\d+)/); const c0 = mm[1].charCodeAt(0) - 65, r0 = +mm[2] - 1; d.values.forEach((row: unknown[], i: number) => { const r = (t[r0 + i] ||= []); row.forEach((v, j) => { while (r.length < c0 + j) r.push(''); r[c0 + j] = String(v ?? ''); }); }); } return json({}); }
+  const m = u.match(/^\/values\/([^!]+)!([A-Z0-9:]+?)(:clear|:append)?(\?|$)/);
   if (!m) throw new Error('unexpected ' + u);
   const tab = m[1];
+  if (m[3] === ':append') { const t = tabs.get(tab) || []; tabs.set(tab, t); for (const r of JSON.parse(init!.body!).values) t.push(r.map((c: unknown) => String(c ?? ''))); return json({}); }
   if (m[3]) { tabs.set(tab, []); return json({}); }
-  if (method === 'PUT') { tabs.set(tab, JSON.parse(init!.body!).values.map((r: unknown[]) => r.map((c) => String(c ?? '')))); return json({}); }
+  if (method === 'PUT') { const t = tabs.get(tab) || []; tabs.set(tab, t); const mm = m[2].match(/^([A-Z])(\d+)/)!; const c0 = mm[1].charCodeAt(0) - 65, r0 = +mm[2] - 1; JSON.parse(init!.body!).values.forEach((row: unknown[], i: number) => { const r = (t[r0 + i] ||= []); row.forEach((v, j) => { while (r.length < c0 + j) r.push(''); r[c0 + j] = String(v ?? ''); }); }); return json({}); }
   return json({ values: tabs.get(tab) || [] });
 };
 
