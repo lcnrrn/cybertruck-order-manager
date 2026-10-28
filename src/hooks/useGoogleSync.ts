@@ -28,6 +28,8 @@ const POLL_MS = 45000;
 const SOFT_SKIP_MS = 15000;
 /** 구글 시트 한도(429) 때 다시 시도 간격 */
 const RETRY_DELAYS_MS = [5000, 15000, 30000, 60000];
+/** 동기화가 성공할 때마다 (detail.startedAt = 그 회차 시작 시각) */
+export const SYNC_DONE_EVENT = 'cybertruck-sync-done';
 export const BUSY_NOTICE = '구글 시트가 잠깐 바빠서 곧 다시 저장할게요';
 
 export type SyncStatus = 'idle' | 'connecting' | 'syncing' | 'retrying' | 'error';
@@ -184,7 +186,8 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
           return false;
         }
         const startedDirty = lsNum(LS_DIRTY);
-        lastStartRef.current = Date.now();
+        const runStartedAt = Date.now();
+        lastStartRef.current = runStartedAt;
         if (reason !== 'poll' && retryAttemptRef.current === 0) setStatus('syncing');
         try {
           // 시간 초과로 끊긴 지난 회차가 아직 시트에 쓰는 중이면 끝날 때까지 기다림 (동시에 두 번 쓰지 않게)
@@ -230,6 +233,11 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
           readOnlyRef.current = false;
           setGate('none');
           if (toastMsg) onToastRef.current?.(toastMsg);
+          try {
+            window.dispatchEvent(new CustomEvent(SYNC_DONE_EVENT, { detail: { startedAt: runStartedAt } }));
+          } catch {
+            /* ignore */
+          }
           return true;
         } catch (e) {
           const msg = e instanceof Error ? e.message : '동기화 실패';

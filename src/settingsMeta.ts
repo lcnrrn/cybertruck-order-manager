@@ -3,7 +3,7 @@ const META_KEY = 'cybertruck-settings-meta-v1';
 export const SETTINGS_CHANGED_EVENT = 'cybertruck-settings-changed';
 export const SETTINGS_APPLIED_EVENT = 'cybertruck-settings-applied';
 
-export type SettingKey = 'products' | 'sources' | 'sms' | 'filament' | 'production' | 'expenses' | 'deletedOrders' | 'epostRequest' | 'productImages' | 'shop';
+export type SettingKey = 'products' | 'sources' | 'sms' | 'filament' | 'production' | 'expenses' | 'deletedOrders' | 'epostRequest' | 'productImages' | 'shop' | 'epostWebhook';
 
 export const SETTING_LS_KEYS: Record<SettingKey, string> = {
   products: 'cybertruck-products-v1',
@@ -18,6 +18,8 @@ export const SETTING_LS_KEYS: Record<SettingKey, string> = {
   productImages: 'cybertruck-product-images-v1',
   /** 가게 설정 {bankName, bankNumber, bankHolder, costPerGram …} — 설정 탭 'shop' 행 */
   shop: 'cybertruck-shop-v1',
+  /** 접수 알림 웹훅 {url, key} — 설정 탭 'epostWebhook' 행 (키 단위 최신값 우선) */
+  epostWebhook: 'cybertruck-epost-webhook-v1',
 };
 
 export function getSettingsMeta(): Partial<Record<SettingKey, number>> {
