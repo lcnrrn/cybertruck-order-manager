@@ -35,7 +35,7 @@ export interface Order {
   items: string;
   address: string;
   phone: string;
-  /** 주문 경로 (UI label). Sheet column stays `group` for sync. */
+  /** (옛 주문 경로 열 — 화면에선 안 쓰지만 시트 D 열 호환을 위해 유지) */
   group?: string;
   status: OrderStatus;
   priority: boolean;
