@@ -32,8 +32,6 @@ import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
 import { EpostPanel } from './components/EpostPanel';
-import { flushEpostWebhook, hasWebhook, loadWebhook, queueEpostWebhook, webhookToast, WEBHOOK_HINT_MSG } from './epostWebhook';
-import { SYNC_DONE_EVENT } from './hooks/useGoogleSync';
 import { loadEpostRequest, type EpostRequest } from './epost';
 import { BackupPanel } from './components/BackupPanel';
 import { LockedBanner, SyncGate } from './components/SyncGate';
@@ -45,6 +43,8 @@ import { PrintQueue } from './components/PrintQueue';
 import { Customers } from './components/Customers';
 import { ProfitPanel } from './components/ProfitPanel';
 import { ShopSettingsPanel } from './components/ShopSettingsPanel';
+import { maybeDailySnapshot } from './snapshots';
+import { CommandBar, type QuickAction } from './components/CommandBar';
 import { EmptyArt, BrandLogo } from './ui/Art';
 import {
   ChartColumn,
@@ -63,45 +63,31 @@ import {
   Plus,
   ReceiptText,
   RefreshCw,
+  Search,
   Settings,
   Spool,
   Store,
   Users,
-  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
-type Sheet = 'none' | 'deposit' | 'shop' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'sales' | 'filament' | 'menu' | 'backup' | 'epost' | 'shipsms';
+type Sheet = 'none' | 'deposit' | 'shop' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'filament' | 'backup' | 'epost' | 'shipsms';
 
-const MENU_ITEMS: { id: Sheet; icon: LucideIcon; label: string }[] = [
-  { id: 'import', icon: Download, label: '가져오기' },
-  { id: 'tracking', icon: ReceiptText, label: '송장 등록' },
-  { id: 'products', icon: Package, label: '제품 관리' },
-  { id: 'sales', icon: Wallet, label: '매출 정리' },
-  { id: 'filament', icon: Spool, label: '필라멘트' },
-  { id: 'sms', icon: MessageSquareText, label: '문자 템플릿' },
-  { id: 'backup', icon: Database, label: '데이터 백업' },
-  { id: 'google', icon: Settings, label: '구글 설정' },
-];
-
-type Tab = 'home' | 'orders' | 'make' | 'filament' | 'sales' | 'customers' | 'more';
+type Tab = 'home' | 'orders' | 'make' | 'sales' | 'customers' | 'more';
 const TAB_KEY = 'cybertruck-last-tab-v2';
-/** 하단 탭 (필라멘트는 더보기·홈에서 들어감 — 예전 저장값 'filament' 도 그대로 열림) */
-const ALL_TABS: { id: Tab; icon: LucideIcon; label: string; title: string; hidden?: boolean }[] = [
+const TABS: { id: Tab; icon: LucideIcon; label: string; title: string }[] = [
   { id: 'home', icon: House, label: '홈', title: '대시보드' },
   { id: 'orders', icon: ClipboardList, label: '주문', title: '주문' },
   { id: 'make', icon: Hammer, label: '제작', title: '제작' },
   { id: 'sales', icon: ChartColumn, label: '매출', title: '매출' },
   { id: 'customers', icon: Users, label: '고객', title: '고객' },
-  { id: 'filament', icon: Spool, label: '필라멘트', title: '필라멘트', hidden: true },
   { id: 'more', icon: Settings, label: '더보기', title: '더보기 · 설정' },
 ];
-const TABS = ALL_TABS.filter((t) => !t.hidden);
 const MORE_ITEMS: { id: Sheet; icon: LucideIcon; color: string; label: string; desc: string }[] = [
   { id: 'epost', icon: Mailbox, color: 'linear-gradient(135deg,#f472b6,#be185d)', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
   { id: 'shipsms', icon: MessageSquare, color: 'linear-gradient(135deg,#a78bfa,#6d28d9)', label: '발송 문자 보내기', desc: '송장 나온 건 발송안내 문자 모아보기 · 보냄 체크' },
   { id: 'deposit', icon: Landmark, color: 'linear-gradient(135deg,#4ade80,#15803d)', label: '입금 확인', desc: '은행 거래내역 붙여넣기 → 미입금 주문 자동 짝찾기' },
-  { id: 'shop', icon: Store, color: 'linear-gradient(135deg,#f9a8d4,#7c3aed)', label: '가게 · 구매자 안내', desc: '입금 계좌 · 주문/조회 링크 · 원가 기준 · 접수 알림 웹훅' },
+  { id: 'shop', icon: Store, color: 'linear-gradient(135deg,#f9a8d4,#7c3aed)', label: '가게 · 구매자 안내', desc: '입금 계좌 · 주문/조회 링크 · 원가 기준' },
   { id: 'products', icon: Package, color: 'linear-gradient(135deg,#5ee1ff,#2563eb)', label: '제품 관리', desc: '사진 · 판매가 · 필라멘트 g · 출력 시간' },
   { id: 'filament', icon: Spool, color: 'linear-gradient(135deg,#34d399,#047857)', label: '필라멘트 재고', desc: '구매 기록 · 재고 · 종류별 사용량' },
   { id: 'sms', icon: MessageSquareText, color: 'linear-gradient(135deg,#fbbf24,#d97706)', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
@@ -114,7 +100,7 @@ const MORE_ITEMS: { id: Sheet; icon: LucideIcon; color: string; label: string; d
 function loadTab(): Tab {
   try {
     const v = localStorage.getItem(TAB_KEY);
-    if (v && ALL_TABS.some((t) => t.id === v)) return v as Tab;
+    if (v && TABS.some((t) => t.id === v)) return v as Tab;
   } catch {
     /* ignore */
   }
@@ -232,6 +218,7 @@ export default function App() {
   const [period, setPeriod] = useState<PeriodRange>(loadPeriodFilter);
   const [query, setQuery] = useState('');
   const [sheet, setSheet] = useState<Sheet>('none');
+  const [cmdOpen, setCmdOpen] = useState(false);
   const [editing, setEditing] = useState<Order | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [tab, setTabState] = useState<Tab>(loadTab);
@@ -297,18 +284,6 @@ export default function App() {
   }, [period]);
 
   const showToast = useCallback((msg: string) => setToast(msg), []);
-  // 접수 요청이 시트에 올라간 동기화가 끝나면 Bot 웹훅 호출 (실패해도 시트 저장은 이미 끝난 상태)
-  useEffect(() => {
-    const on = (e: Event) => {
-      const at = (e as CustomEvent<{ startedAt?: number }>).detail?.startedAt ?? Date.now();
-      void flushEpostWebhook(at).then((r) => {
-        if (r) setToast(webhookToast(r));
-      });
-    };
-    window.addEventListener(SYNC_DONE_EVENT, on);
-    return () => window.removeEventListener(SYNC_DONE_EVENT, on);
-  }, []);
-
   const handleProductsChange = useCallback((next: Product[]) => {
     if (blocked()) return;
     setProducts(next);
@@ -336,7 +311,7 @@ export default function App() {
   lockToastRef.current = showToast;
   // 잠금 중엔 수정용 시트(폼·제품 관리 등)를 열지 않음
   useEffect(() => {
-    if (google.locked && !['none', 'google', 'backup', 'menu'].includes(sheet)) {
+    if (google.locked && !['none', 'google', 'backup'].includes(sheet)) {
       setSheet('none');
       showToast('🔒 최신 내용을 받은 뒤에 수정할 수 있어요');
     }
@@ -351,6 +326,13 @@ export default function App() {
     e.stopPropagation();
     showToast('🔒 최신 내용을 받은 뒤에 수정할 수 있어요');
   };
+
+  // 하루 한 번 이 기기에 자동 백업 (최신 내용을 받은 뒤에만)
+  useEffect(() => {
+    if (google.locked || google.status === 'syncing' || !orders.length) return;
+    const t = window.setTimeout(() => void maybeDailySnapshot(orders), 4000);
+    return () => window.clearTimeout(t);
+  }, [orders, google.locked, google.status]);
 
   const baseFiltered = useFilteredOrders(orders, filter, query, period, products);
   const [productFilter, setProductFilter] = useState<string | null>(null);
@@ -425,6 +407,34 @@ export default function App() {
     },
     [showToast],
   );
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCmdOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  function pickFromCommand(o: Order) {
+    setCmdOpen(false);
+    setSheet('none');
+    setQuery(o.name);
+    setFilter('전체');
+    setPeriod({ preset: 'all' });
+    setProductFilter(null);
+    switchTab('orders');
+  }
+
+  const quickActions: QuickAction[] = [
+    ...TABS.map((t) => ({ id: `tab-${t.id}`, label: `${t.title} 화면`, run: () => { setCmdOpen(false); setSheet('none'); switchTab(t.id); } })),
+    { id: 'new', label: '새 주문 입력', run: () => { setCmdOpen(false); openNew(); } },
+    ...MORE_ITEMS.map((m) => ({ id: `sheet-${m.id}`, label: m.label, hint: m.desc, run: () => { setCmdOpen(false); setSheet(m.id); } })),
+    { id: 'tracking', label: '송장 등록', run: () => { setCmdOpen(false); setSheet('tracking'); } },
+  ];
 
   function openNew() {
     setEditing(null);
@@ -514,6 +524,12 @@ export default function App() {
     },
     onItemDone: (id: string, key: string, count: number) => setItemDone(id, key, count),
     onPartDone: (id: string, product: string, part: string, count: number) => setPartDone(id, product, part, count),
+    onMakeAll: (id: string) => {
+      const o = orders.find((x) => x.id === id);
+      if (!o) return;
+      for (const it of orderItemProgress(o, products.map((p) => p.name))) if (it.done < it.qty) setItemDone(id, it.key, it.qty);
+      showToast('전부 제작 완료로 체크했어요 · 이제 접수할 수 있어요');
+    },
     onShip: (id: string, items: Record<string, number>, mode: 'counter' | 'visit' = 'counter') => {
       const names = products.map((p) => p.name);
       transformOrder(id, (o) => addShipment(o, items, orderItemProgress(o, names), Date.now(), mode));
@@ -562,7 +578,7 @@ export default function App() {
         .sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || (a.createdAt || a.updatedAt) - (b.createdAt || b.updatedAt)),
     [orders, productFilter, products, postOnly],
   );
-  const tabInfo = ALL_TABS.find((t) => t.id === tab) ?? ALL_TABS[0];
+  const tabInfo = TABS.find((t) => t.id === tab) ?? TABS[0];
   const stats: { label: string; value: string; tone?: string }[] =
     tab === 'orders'
       ? [
@@ -625,6 +641,9 @@ export default function App() {
           <button type="button" className={`btn btn-ghost btn-compact refresh-btn${google.status === 'syncing' ? ' spin' : ''}`} onClick={() => void refreshAll()} disabled={google.status === 'syncing'} aria-label="새로고침">
             <RefreshCw size={15} />{google.status === 'syncing' ? '받는 중…' : '새로고침'}
           </button>
+          <button type="button" className="btn btn-ghost btn-compact cmd-trigger" onClick={() => setCmdOpen(true)} aria-label="빠른 검색">
+            <Search size={15} /><span className="cmd-trigger-label">검색</span>
+          </button>
           {tab === 'orders' ? (
             <div className="header-actions">
               <button type="button" className="btn btn-ghost" onClick={() => setSheet('tracking')}><ReceiptText size={15} />송장 등록</button>
@@ -656,7 +675,7 @@ export default function App() {
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="이름 · 연락처 · 주소 · 송장 · 품목 · 경로"
+                  placeholder="이름 · 연락처 · 주소 · 송장 · 품목"
                   enterKeyHint="search"
                   aria-label="주문 검색"
                 />
@@ -759,9 +778,6 @@ export default function App() {
               <h2 className="section-title">
                 <Hammer size={17} /> 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
               </h2>
-              {smsPending > 0 ? (
-                <button type="button" className="btn btn-secondary btn-wide" onClick={() => setSheet('shipsms')}><MessageSquare size={16} />발송 문자 보내기 ({smsPending}건)</button>
-              ) : null}
               {postPending > 0 ? (
                 <button type="button" className="btn btn-secondary btn-wide" onClick={() => setSheet('epost')}><Mailbox size={16} />우체국 접수하러 가기 ({postPending}건)</button>
               ) : null}
@@ -778,19 +794,6 @@ export default function App() {
               <div className="order-list">{renderCards(workOrders)}</div>
             </>
           )}
-        </main>
-      )}
-
-      {tab === 'filament' && (
-        <main className="tab-page embedded-panel" data-lock-zone>
-          <FilamentInventory
-            orders={orders}
-            products={products}
-            state={filament}
-            onChange={updateFilament}
-            onOpenProducts={() => setSheet('products')}
-            onClose={() => switchTab('make')}
-          />
         </main>
       )}
 
@@ -865,6 +868,10 @@ export default function App() {
         <button type="button" className="fab" data-lock-zone onClick={openNew} aria-label="새 주문 추가"><Plus size={28} strokeWidth={2.6} /></button>
       )}
 
+      {cmdOpen ? (
+        <CommandBar orders={orders} products={products} actions={quickActions} onPick={pickFromCommand} onClose={() => setCmdOpen(false)} />
+      ) : null}
+
       {sheet !== 'none' && (
         <div className="sheet-backdrop" onClick={() => setSheet('none')}>
           <div
@@ -873,22 +880,6 @@ export default function App() {
             role="dialog"
             aria-modal="true"
           >
-            {sheet === 'menu' && (
-              <div className="sheet-body">
-                <h2 className="sheet-title">메뉴</h2>
-                <div className="menu-grid">
-                  {MENU_ITEMS.map((m) => (
-                    <button key={m.id} type="button" className="menu-tile" onClick={() => setSheet(m.id)}>
-                      <span className="menu-ico" aria-hidden><m.icon size={22} /></span>
-                      <span className="menu-label">{m.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="form-actions">
-                  <button type="button" className="btn btn-ghost" onClick={() => setSheet('none')}>닫기</button>
-                </div>
-              </div>
-            )}
             {sheet === 'shipsms' && (
               <ShipSmsPanel
                 orders={orders}
@@ -904,12 +895,7 @@ export default function App() {
                 onRequest={(r) => {
                   if (blocked()) return;
                   setEpostReq(r);
-                  if (hasWebhook(loadWebhook())) {
-                    queueEpostWebhook(r); // 시트에 저장된 뒤(동기화 성공 시) Bot 웹훅 호출
-                    showToast('📮 접수 요청 저장 중…');
-                  } else {
-                    showToast(WEBHOOK_HINT_MSG);
-                  }
+                  showToast('📮 접수 요청 저장됨 · 채팅으로 「접수해줘」라고 말해줘');
                   void google.syncNow();
                 }}
                 onCancelShip={(id, shipId) => sharedCardProps.onCancelShip(id, shipId)}
@@ -933,7 +919,6 @@ export default function App() {
             {sheet === 'shop' && (
               <ShopSettingsPanel
                 copyText={(t, m) => void copyText(t, m)}
-                onToast={showToast}
                 onSaved={() => {
                   showToast('가게 설정 저장됨');
                   setSheet('none');
@@ -966,7 +951,7 @@ export default function App() {
               </div>
             )}
             {sheet === 'import' && (
-              <ImportModal onImport={handleImport} onClose={() => setSheet('none')} />
+              <ImportModal existing={orders} onImport={handleImport} onClose={() => setSheet('none')} />
             )}
             {sheet === 'google' && (
               <div className="sheet-body">
@@ -991,23 +976,6 @@ export default function App() {
                 filament={filament}
                 onOpenFilament={() => setSheet('filament')}
                 onChange={handleProductsChange}
-                onClose={() => setSheet('none')}
-              />
-            )}
-            {sheet === 'sales' && (
-              <SalesReport
-                filament={filament}
-                orders={orders}
-                products={products}
-                period={period}
-                onPeriod={setPeriod}
-                onTogglePaid={sharedCardProps.onTogglePaid}
-                onMarkPaid={(ids) => {
-                  const now = Date.now();
-                  for (const id of ids) updateOrder(id, { paid: true, paidAt: now });
-                  showToast(`${ids.length}건 입금완료 처리`);
-                }}
-                onEdit={(o) => openEdit(o)}
                 onClose={() => setSheet('none')}
               />
             )}
