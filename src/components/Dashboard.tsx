@@ -25,6 +25,8 @@ import { Bars, Ring, Sparkline } from '../ui/Charts';
 import { TruckArt } from '../ui/Art';
 import { useProductImages } from '../productImages';
 import { useShopSettings } from '../shop';
+import { estimateBalance, useExpenseState } from '../balance';
+import { BalanceBreakdown } from './BalanceBreakdown';
 import { costPerGram, monthlyProfit, shipFeeOf } from '../profit';
 
 const DAY = 86400000;
@@ -72,6 +74,8 @@ export function Dashboard({ orders, products, filament, postPending, smsPending,
   const shop = useShopSettings();
   const cpg = costPerGram(shop, filament).value;
   const fee = shipFeeOf(shop);
+  const exp = useExpenseState();
+  const est = useMemo(() => estimateBalance(exp, orders, products, filament), [exp, orders, products, filament]);
   const mp = useMemo(() => monthlyProfit(orders, products, cpg, fee, 1)[0], [orders, products, cpg, fee]);
   const d = useMemo(() => {
     const now = Date.now();
@@ -238,6 +242,13 @@ export function Dashboard({ orders, products, filament, postPending, smsPending,
           <Clock size={16} />
           <span>미입금 <b>{d.unpaidCount}건</b> · {formatWon(d.unpaidSum)}</span>
           <ChevronRight size={16} />
+        </button>
+      ) : null}
+
+      {est ? (
+        <button type="button" className="panel bal-panel" onClick={() => onGo('sales')} aria-label="통장 잔고 자세히 보기">
+          <div className="panel-head"><h3><Wallet size={16} />통장 잔고 (예상)</h3><small>매출 › 통장 잔고에서 실제 잔고로 맞춰요</small></div>
+          <BalanceBreakdown est={est} />
         </button>
       ) : null}
 
