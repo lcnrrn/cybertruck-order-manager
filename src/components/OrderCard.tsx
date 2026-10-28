@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { activeShipments, shipmentLabel, shippableItems } from '../shipments';
+import { activeShipments, shipmentLabel, shippableItems, shippedQty } from '../shipments';
 import { formatOrderDate, relativeLabel } from '../dates';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
@@ -24,6 +24,8 @@ interface Props {
   onPartDone?: (id: string, product: string, part: string, count: number) => void;
   onShip: (id: string, items: Record<string, number>, mode?: 'counter' | 'visit') => void;
   onCancelShip: (id: string, shipId: string) => void;
+  /** 남은 품목을 전부 제작 완료로 체크 */
+  onMakeAll?: (id: string) => void;
 }
 
 export function OrderCard({
@@ -39,6 +41,7 @@ export function OrderCard({
   onPartDone,
   onShip,
   onCancelShip,
+  onMakeAll,
 }: Props) {
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
   const active = order.status === '대기' || order.status === '제작중';
@@ -52,6 +55,8 @@ export function OrderCard({
   const [pick, setPick] = useState<Record<string, number> | null>(null);
   const [pickMode, setPickMode] = useState<'counter' | 'visit'>('counter');
   const pickTotal = pick ? Object.values(pick).reduce((a, b) => a + b, 0) : 0;
+  const shipped = shippedQty(order);
+  const unshippedLeft = progress.some((it) => it.qty - (shipped[it.key] || 0) > 0);
   const nextNo = ships.reduce((m, x) => Math.max(m, x.no), 0) + 1;
 
 
@@ -187,7 +192,6 @@ export function OrderCard({
                     type="button"
                     className={`btn ship-btn${m === 'visit' ? ' visit' : ''}`}
                     disabled={availKeys.length === 0}
-                    title={availKeys.length === 0 ? '제작 체크된 품목 중 아직 안 보낸 게 없어요' : undefined}
                     onClick={() => { setPickMode(m); setPick({ ...avail }); }}
                   >
                     {m === 'visit' ? '🚚 방문 접수' : '🏤 창구 접수'}{availKeys.length ? ` (${Object.values(avail).reduce((x, y) => x + y, 0)}개)` : ''}
@@ -195,6 +199,12 @@ export function OrderCard({
                 ))}
               </div>
             )}
+            {!pick && availKeys.length === 0 && unshippedLeft ? (
+              <div className="ship-hint">
+                <span>접수는 <b>제작 체크한 품목</b>만 보낼 수 있어요.</span>
+                {onMakeAll ? <button type="button" className="btn btn-ghost btn-compact" onClick={() => onMakeAll(order.id)}>✓ 전부 제작 완료 체크</button> : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {ships.length ? (

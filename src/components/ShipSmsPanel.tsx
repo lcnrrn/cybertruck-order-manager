@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Order, Shipment } from '../types';
 import { activeShipments, shipmentLabel } from '../shipments';
-import { buildShippingSmsBody, formatPhoneDisplay } from '../sms';
+import { buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 
 interface Props {
   orders: Order[];
@@ -14,14 +14,6 @@ interface Row {
   order: Order;
   sh: Shipment;
   body: string;
-}
-
-const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
-
-/** iPhone: sms:번호&body= , 그 외: sms:번호?body= */
-function smsHref(phone: string, body: string): string {
-  const d = phone.replace(/[^\d+]/g, '');
-  return `sms:${d}${isIOS ? '&' : '?'}body=${encodeURIComponent(body)}`;
 }
 
 /** 진행 표시에 넣는 '최근' 송장 범위 (보낸 건은 이 기간 안에 송장 붙은 것만 셈) */
@@ -136,7 +128,7 @@ export function ShipSmsPanel({ orders, copyText, onToggleSent, onClose }: Props)
             <div className="ship-sms-actions">
               <button type="button" className="btn btn-copy" disabled={!order.phone} onClick={() => copyText(order.phone.replace(/\D/g, ''), '번호 복사됨')}>번호 복사</button>
               <button type="button" className="btn btn-copy" onClick={() => copyText(body, '문자 복사됨')}>문자 복사</button>
-              {order.phone ? <a className="btn btn-copy" href={smsHref(order.phone, body)} onClick={() => { if (!sh.smsSent) openedSms(order.id, sh.id); }}>📱 문자 앱</a> : null}
+              {order.phone ? <a className="btn btn-copy" href={buildSmsLink(order.phone, body)} onClick={() => { if (!sh.smsSent) openedSms(order.id, sh.id); }}>📱 문자 앱</a> : null}
               <label className="ship-sms-check">
                 <input type="checkbox" checked={!!sh.smsSent} onChange={(e) => onToggleSent(order.id, sh.id, e.target.checked)} /> 보냄
               </label>

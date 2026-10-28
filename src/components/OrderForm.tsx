@@ -43,7 +43,6 @@ interface Props {
   initial?: Order | null;
   onSubmit: (values: OrderFormValues) => void;
   onCancel: () => void;
-  sources?: string[];
   products: Product[];
   filament?: FilamentState;
 }

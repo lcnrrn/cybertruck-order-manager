@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { BellRing, Copy, ExternalLink, Landmark, Send, Store } from 'lucide-react';
-import { cleanKey, cleanUrl, hasWebhook, loadWebhook, saveWebhook, sendWebhook, webhookToast } from '../epostWebhook';
+import { Copy, ExternalLink, Landmark, Store } from 'lucide-react';
 import { bankInfo, loadShop, saveShop, type ShopSettings } from '../shop';
 import { DEFAULT_COST_PER_GRAM, DEFAULT_SHIP_FEE } from '../profit';
 
 interface Props {
   copyText: (text: string, ok: string) => void;
   onSaved: () => void;
-  onToast: (msg: string) => void;
   onClose: () => void;
 }
 
@@ -33,22 +31,8 @@ const num = (v: string): number | undefined => {
   return v.trim() && Number.isFinite(n) ? n : undefined;
 };
 
-export function ShopSettingsPanel({ copyText, onSaved, onToast, onClose }: Props) {
+export function ShopSettingsPanel({ copyText, onSaved, onClose }: Props) {
   const init = loadShop();
-  const wh0 = loadWebhook();
-  const [wh, setWh] = useState({ url: wh0.url || '', key: wh0.key || '' });
-  const [testing, setTesting] = useState(false);
-  const runTest = async () => {
-    const w = { url: cleanUrl(wh.url), key: cleanKey(wh.key) };
-    if (!hasWebhook(w)) {
-      onToast('웹훅 URL(https://…)을 먼저 넣어줘');
-      return;
-    }
-    setTesting(true);
-    const r = await sendWebhook(w, { event: 'test' });
-    setTesting(false);
-    onToast(r === 'ok' ? '테스트 성공 · Bot이 깨어났어 (할 일 없으면 조용히 끝나요)' : webhookToast(r));
-  };
   const [f, setF] = useState({
     bankName: init.bankName || '',
     bankNumber: init.bankNumber || '',
@@ -90,16 +74,6 @@ export function ShopSettingsPanel({ copyText, onSaved, onToast, onClose }: Props
       </section>
 
       <section className="panel">
-        <div className="panel-head"><h3><BellRing size={16} />접수 알림 웹훅</h3><small>우체국 「접수 요청」 누르면 Bot을 바로 깨워요</small></div>
-        <div className="form-grid">
-          <label>웹훅 URL<input value={wh.url} onChange={(e) => setWh((p) => ({ ...p, url: e.target.value }))} inputMode="url" autoCapitalize="off" autoCorrect="off" spellCheck={false} placeholder="https://…" /></label>
-          <label>발신자 키 (key)<input type="password" value={wh.key} onChange={(e) => setWh((p) => ({ ...p, key: e.target.value }))} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} placeholder="루틴 화면의 key" /></label>
-        </div>
-        <button type="button" className="btn btn-secondary btn-wide" data-allow-locked disabled={testing} onClick={() => void runTest()}><Send size={15} />{testing ? '보내는 중…' : '테스트 알림'}</button>
-        <p className="muted-line">Bot 루틴 화면(웹훅)에 있는 주소와 key를 붙여넣고 아래 「저장」을 눌러요. 두 기기(맥북·아이폰)에 같이 적용돼요. 비워두면 알림 없이 시트에만 저장되고, 채팅으로 「접수해줘」라고 말하면 돼요.</p>
-      </section>
-
-      <section className="panel">
         <div className="panel-head"><h3>구매자 링크 · 안내 문구</h3></div>
         <div className="link-rows">
           <div className="link-row"><span><b>주문하기</b><small>{links.order}</small></span>
@@ -117,7 +91,7 @@ export function ShopSettingsPanel({ copyText, onSaved, onToast, onClose }: Props
 
       <div className="form-actions">
         <button type="button" className="btn btn-ghost" onClick={onClose}>닫기</button>
-        <button type="button" className="btn btn-primary" onClick={() => { saveShop(draft); if (cleanUrl(wh.url) !== (wh0.url || '') || cleanKey(wh.key) !== (wh0.key || '')) saveWebhook(wh); onSaved(); }}>저장</button>
+        <button type="button" className="btn btn-primary" onClick={() => { saveShop(draft); onSaved(); }}>저장</button>
       </div>
     </div>
   );
