@@ -32,6 +32,8 @@ import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
 import { EpostPanel } from './components/EpostPanel';
+import { flushEpostWebhook, hasWebhook, loadWebhook, queueEpostWebhook, webhookToast, WEBHOOK_HINT_MSG } from './epostWebhook';
+import { SYNC_DONE_EVENT } from './hooks/useGoogleSync';
 import { loadEpostRequest, type EpostRequest } from './epost';
 import { BackupPanel } from './components/BackupPanel';
 import { LockedBanner, SyncGate } from './components/SyncGate';
@@ -99,7 +101,7 @@ const MORE_ITEMS: { id: Sheet; icon: LucideIcon; color: string; label: string; d
   { id: 'epost', icon: Mailbox, color: 'linear-gradient(135deg,#f472b6,#be185d)', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
   { id: 'shipsms', icon: MessageSquare, color: 'linear-gradient(135deg,#a78bfa,#6d28d9)', label: '발송 문자 보내기', desc: '송장 나온 건 발송안내 문자 모아보기 · 보냄 체크' },
   { id: 'deposit', icon: Landmark, color: 'linear-gradient(135deg,#4ade80,#15803d)', label: '입금 확인', desc: '은행 거래내역 붙여넣기 → 미입금 주문 자동 짝찾기' },
-  { id: 'shop', icon: Store, color: 'linear-gradient(135deg,#f9a8d4,#7c3aed)', label: '가게 · 구매자 안내', desc: '입금 계좌 · 주문/조회 링크 · 원가 기준' },
+  { id: 'shop', icon: Store, color: 'linear-gradient(135deg,#f9a8d4,#7c3aed)', label: '가게 · 구매자 안내', desc: '입금 계좌 · 주문/조회 링크 · 원가 기준 · 접수 알림 웹훅' },
   { id: 'products', icon: Package, color: 'linear-gradient(135deg,#5ee1ff,#2563eb)', label: '제품 관리', desc: '사진 · 판매가 · 필라멘트 g · 출력 시간' },
   { id: 'filament', icon: Spool, color: 'linear-gradient(135deg,#34d399,#047857)', label: '필라멘트 재고', desc: '구매 기록 · 재고 · 종류별 사용량' },
   { id: 'sms', icon: MessageSquareText, color: 'linear-gradient(135deg,#fbbf24,#d97706)', label: '문자 템플릿', desc: '접수 · 완료 · 발송 안내' },
@@ -295,6 +297,17 @@ export default function App() {
   }, [period]);
 
   const showToast = useCallback((msg: string) => setToast(msg), []);
+  // 접수 요청이 시트에 올라간 동기화가 끝나면 Bot 웹훅 호출 (실패해도 시트 저장은 이미 끝난 상태)
+  useEffect(() => {
+    const on = (e: Event) => {
+      const at = (e as CustomEvent<{ startedAt?: number }>).detail?.startedAt ?? Date.now();
+      void flushEpostWebhook(at).then((r) => {
+        if (r) setToast(webhookToast(r));
+      });
+    };
+    window.addEventListener(SYNC_DONE_EVENT, on);
+    return () => window.removeEventListener(SYNC_DONE_EVENT, on);
+  }, []);
 
   const handleProductsChange = useCallback((next: Product[]) => {
     if (blocked()) return;
@@ -891,7 +904,12 @@ export default function App() {
                 onRequest={(r) => {
                   if (blocked()) return;
                   setEpostReq(r);
-                  showToast('📮 접수 요청 저장됨 · 15분 안에 처리돼요');
+                  if (hasWebhook(loadWebhook())) {
+                    queueEpostWebhook(r); // 시트에 저장된 뒤(동기화 성공 시) Bot 웹훅 호출
+                    showToast('📮 접수 요청 저장 중…');
+                  } else {
+                    showToast(WEBHOOK_HINT_MSG);
+                  }
                   void google.syncNow();
                 }}
                 onCancelShip={(id, shipId) => sharedCardProps.onCancelShip(id, shipId)}
@@ -915,6 +933,7 @@ export default function App() {
             {sheet === 'shop' && (
               <ShopSettingsPanel
                 copyText={(t, m) => void copyText(t, m)}
+                onToast={showToast}
                 onSaved={() => {
                   showToast('가게 설정 저장됨');
                   setSheet('none');

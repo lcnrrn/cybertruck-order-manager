@@ -68,7 +68,8 @@ export async function exportOrdersXlsx(orders: Order[], products: Product[], lab
   );
 }
 
-const KEYS = Object.keys(SETTING_LS_KEYS) as SettingKey[];
+// 웹훅 키는 파일로 내보내지 않음 (비밀값)
+const KEYS = (Object.keys(SETTING_LS_KEYS) as SettingKey[]).filter((k) => k !== 'epostWebhook');
 
 export interface BackupFile {
   app: 'cybertruck-order-manager';
