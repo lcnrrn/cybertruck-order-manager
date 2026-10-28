@@ -21,6 +21,8 @@ import type { Product } from '../products';
 import { orderTimestamp, resolvePeriodBounds } from '../period';
 import { formatWon, isServiceItem, orderAmount, parseOrderProducts, unitPrice } from '../production';
 import { PeriodFilterBar } from './PeriodFilter';
+import { BalanceBreakdown } from './BalanceBreakdown';
+import { estimateBalance } from '../balance';
 
 interface Props {
   orders: Order[];
@@ -143,14 +145,14 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
   const lastBal = lastBalance(exp);
   const [balInput, setBalInput] = useState<string | null>(null);
   const balActual = balInput !== null ? Number(balInput.replace(/[^\d-]/g, '')) : NaN;
+  const est = useMemo(() => estimateBalance(exp, orders, products, filament ?? null), [exp, orders, products, filament]);
   const balPreview = useMemo(() => {
     if (balInput === null || !balInput.replace(/[^\d]/g, '') || !Number.isFinite(balActual)) return null;
-    if (!lastBal) return { first: true as const, actual: balActual };
-    const income = paidAll - lastBal.paidTotal;
-    const spent = expAll - lastBal.expTotal;
-    const expected = lastBal.amount + income - spent;
+    if (!lastBal || !est) return { first: true as const, actual: balActual };
+    // 예상 잔고(입금 반영) 기준으로 차이를 계산 — 지난 잔고 그대로와 비교하지 않음
+    const { depositSum: income, spent, expected } = est;
     return { first: false as const, actual: balActual, income, spent, expected, diff: balActual - expected };
-  }, [balInput, balActual, lastBal, paidAll, expAll]);
+  }, [balInput, balActual, lastBal, est]);
   const saveBalance = () => {
     if (!balPreview) return;
     const now = Date.now();
@@ -261,6 +263,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
             <span>{formatWon(lastBal.amount)} · {new Date(lastBal.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 입력</span>
           ) : <span className="hint">아직 입력 안 함</span>}
         </div>
+        {est && balInput === null && <BalanceBreakdown est={est} detail />}
         {balInput === null ? (
           <div className="form-actions">
             {lastBal && <button type="button" className="btn btn-ghost" onClick={undoBalance}>마지막 입력 취소</button>}
@@ -273,8 +276,8 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
               <p className="hint">첫 입력이라 기준 잔고로만 저장해요 (자동 기록 없음). 다음부터 이 금액 + 그 뒤 입금 − 그 뒤 지출과 비교해요.</p>
             ) : (
               <div className="balance-preview">
-                <div>지난 잔고 <b>{formatWon(lastBal!.amount)}</b></div>
-                <div>+ 그 뒤 입금 <b>{formatWon(balPreview.income)}</b> − 그 뒤 지출 <b>{formatWon(balPreview.spent)}</b></div>
+                <div>기준 잔고 <b>{formatWon(lastBal!.amount)}</b></div>
+                <div>+ 그 뒤 입금 {est?.deposits.length ?? 0}건 <b>{formatWon(balPreview.income)}</b> − 그 뒤 지출 <b>{formatWon(balPreview.spent)}</b></div>
                 <div>= 예상 잔고 <b>{formatWon(balPreview.expected)}</b> · 실제 <b>{formatWon(balPreview.actual)}</b></div>
                 <div className={balPreview.diff < 0 ? 'report-warn' : ''}>
                   {balPreview.diff === 0
