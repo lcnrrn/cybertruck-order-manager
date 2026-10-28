@@ -35,21 +35,6 @@ export function loadEpostRequest(): EpostRequest | null {
   }
 }
 
-const MODE_LS = 'cybertruck-epost-mode-v1';
-export function loadEpostMode(): EpostMode {
-  try {
-    return localStorage.getItem(MODE_LS) === 'visit' ? 'visit' : 'counter';
-  } catch {
-    return 'counter';
-  }
-}
-export function saveEpostMode(m: EpostMode) {
-  try {
-    localStorage.setItem(MODE_LS, m);
-  } catch {
-    /* ignore */
-  }
-}
 function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

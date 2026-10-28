@@ -19,7 +19,7 @@ import {
 
 /**
  * Device settings sync via a separate "설정" tab: one row per key (key | json | updatedAt).
- * - products / sources / sms: last-write-wins per key (updatedAt).
+ * - products / sms: last-write-wins per key (updatedAt).
  * - filament: entries merged append-only by id (both devices' purchases kept); threshold LWW.
  * - A device that never edited a key (no local data) has updatedAt 0 → remote always wins.
  * - Remote empty → local real data is pushed (first device with real data wins).
@@ -27,7 +27,7 @@ import {
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 export const SETTINGS_SHEET_NAME = '설정';
 const HEADERS = ['key', 'json', 'updatedAt'];
-const KEYS: SettingKey[] = ['products', 'sources', 'sms', 'filament', 'production', 'expenses', 'deletedOrders', 'epostRequest', 'productImages', 'shop', 'epostWebhook'];
+const KEYS: SettingKey[] = ['products', 'sms', 'filament', 'production', 'expenses', 'deletedOrders', 'epostRequest', 'productImages', 'shop'];
 
 interface Entry {
   json: string; // '' = default / not set

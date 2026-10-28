@@ -388,40 +388,6 @@ export async function patchOrders(accessToken: string, orders: Order[]): Promise
   return { updated: data.length, appended: append.length };
 }
 
-/** (예전 방식, 더는 동기화에 쓰지 않음) Replace entire Orders sheet with header + rows (source of truth write-through). */
-export async function pushOrders(accessToken: string, orders: Order[]): Promise<void> {
-  await ensureOrdersSheet(accessToken);
-  const spreadsheetId = sheetIdOrThrow();
-
-  // 먼저 덮어쓰고(빈 시트가 보이는 순간 없음) 그다음 남는 아래 행·오른쪽 열만 지움
-  const values = [[...ORDERS_HEADERS], ...orders.map(orderToRow)];
-  const updateRes = await sheetsFetch(
-    accessToken,
-    `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!A1:R${values.length}`)}?valueInputOption=RAW`,
-    {
-      method: 'PUT',
-      body: JSON.stringify({ values }),
-    },
-  );
-  if (!updateRes.ok) {
-    throw new Error(`시트 쓰기 실패: ${await readError(updateRes)}`);
-  }
-  const clearRes = await sheetsFetch(accessToken, `${spreadsheetId}/values:batchClear`, {
-    method: 'POST',
-    body: JSON.stringify({ ranges: [`${ORDERS_SHEET_NAME}!A${values.length + 1}:Z`, `${ORDERS_SHEET_NAME}!T1:Z${values.length}`, `${ORDERS_SHEET_NAME}!S2:S${values.length}`] }),
-  });
-  // S1: 마지막으로 탭 전체를 쓴 기기·빌드 (문제 생기면 누가 썼는지 확인용)
-  try {
-    const who = JSON.stringify({ at: Date.now(), build: BUILD_ID, ua: navigator.userAgent.slice(0, 120), n: orders.length, paid: orders.filter((o) => o.paid).length, done: orders.filter((o) => o.doneMap).length });
-    await sheetsFetch(accessToken, `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!S1`)}?valueInputOption=RAW`, { method: 'PUT', body: JSON.stringify({ values: [[who]] }) });
-  } catch {
-    /* ignore */
-  }
-  if (!clearRes.ok) {
-    throw new Error(`시트 정리 실패: ${await readError(clearRes)}`);
-  }
-}
-
 /** 시트 L~R 열에 해당하는 주문 필드 */
 const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
 
