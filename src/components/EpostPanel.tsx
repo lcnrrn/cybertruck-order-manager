@@ -107,7 +107,7 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose, 
 
       {request && (
         <div className={`epost-status st-${request.status}`}>
-          {request.status === 'pending' && <b>⏳ 접수 대기 중 (Bot이 곧 처리) · {modeLabel(request)}</b>}
+          {request.status === 'pending' && <b>⏳ 접수 대기 중 · 채팅으로 「접수해줘」라고 말해줘 · {modeLabel(request)}</b>}
           {request.status === 'running' && <b>🔄 접수 중… · {modeLabel(request)}</b>}
           {request.status === 'done' && (
             <b>

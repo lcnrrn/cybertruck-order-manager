@@ -1,21 +1,30 @@
 import { useMemo, useState } from 'react';
 import type { Order } from '../types';
-import { parseNaverFormFile, parseReminderText } from '../parseImport';
+import { applyNickname, parseNaverFormFile, parseReminderText } from '../parseImport';
 import {
   getProducts,
   joinItems,
   parseItemsAgainstCatalog,
 } from '../products';
-import { applyNickname } from '../sources';
 
 type Tab = 'naver' | 'reminders';
 
 interface Props {
+  /** 이미 있는 주문 (중복 감지용) */
+  existing: Order[];
   onImport: (partials: Partial<Order>[]) => number;
   onClose: () => void;
-  sources?: string[];
 }
 
+
+const digitsOf = (s?: string) => (s || '').replace(/\D/g, '');
+const squash = (s?: string) => (s || '').replace(/\s+/g, '').toLowerCase();
+/** 같은 사람(연락처, 없으면 이름) + 같은 주문 내용이면 같은 주문으로 봄 */
+function dupKey(o: Partial<Order>): string {
+  const ph = digitsOf(o.phone);
+  const who = ph.length >= 9 ? `p${ph}` : `n${squash(o.name)}`;
+  return `${who}|${squash(o.items)}`;
+}
 
 /** Map imported items text onto catalog chips; leftover → note (요청 등). */
 function alignItemsToCatalog(partials: Partial<Order>[]): Partial<Order>[] {
@@ -28,7 +37,7 @@ function alignItemsToCatalog(partials: Partial<Order>[]): Partial<Order>[] {
   });
 }
 
-export function ImportModal({ onImport, onClose }: Props) {
+export function ImportModal({ existing, onImport, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('naver');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
@@ -46,13 +55,34 @@ export function ImportModal({ onImport, onClose }: Props) {
     () => applyNickname(rawPreview),
     [rawPreview],
   );
+  /** 중복 의심: 이미 있는 주문 / 이번 목록 안의 앞줄과 같음 */
+  const dups = useMemo(() => {
+    const have = new Map<string, Order>();
+    for (const o of existing) have.set(dupKey(o), o);
+    const seen = new Set<string>();
+    return preview.map((p): { kind: 'existing' | 'batch'; at?: number } | null => {
+      const k = dupKey(p);
+      const hit = have.get(k);
+      if (hit) return { kind: 'existing', at: hit.createdAt || hit.updatedAt };
+      if (seen.has(k)) return { kind: 'batch' };
+      seen.add(k);
+      return null;
+    });
+  }, [preview, existing]);
+  /** 직접 바꾼 체크 (없으면 중복은 기본 제외) */
+  const [override, setOverride] = useState<Record<number, boolean>>({});
+  const isOn = (i: number) => override[i] ?? !dups[i];
+  const picked = preview.map((_, i) => i).filter(isOn);
+  const dupCount = dups.filter(Boolean).length;
 
   function switchTab(next: Tab) {
     setTab(next);
+    setOverride({});
   }
 
   async function handleFile(file: File | null) {
     setFileError(null);
+    setOverride({});
     setFileOrders([]);
     setFileName('');
     if (!file) return;
@@ -75,7 +105,7 @@ export function ImportModal({ onImport, onClose }: Props) {
   }
 
   function handleImport() {
-    if (preview.length === 0) {
+    if (picked.length === 0) {
       window.alert(
         tab === 'naver'
           ? '가져올 주문이 없습니다. Excel/CSV 파일을 선택해 주세요.'
@@ -83,7 +113,7 @@ export function ImportModal({ onImport, onClose }: Props) {
       );
       return;
     }
-    const n = onImport(applyNickname(rawPreview));
+    const n = onImport(applyNickname(rawPreview.filter((_, i) => isOn(i))));
     window.alert(`${n}건을 가져왔습니다.`);
     onClose();
   }
@@ -146,7 +176,7 @@ export function ImportModal({ onImport, onClose }: Props) {
           <textarea
             className="import-textarea"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => { setText(e.target.value); setOverride({}); }}
             rows={8}
             placeholder={'이름 - 주문내용 / 주소 01012345678\n이름 / 주문 / 주소 / 연락처'}
           />
@@ -156,15 +186,26 @@ export function ImportModal({ onImport, onClose }: Props) {
       {preview.length > 0 && (
         <div className="import-preview">
           <strong>
-            미리보기 {preview.length}건
+            미리보기 {preview.length}건 · 가져올 것 {picked.length}건
           </strong>
-          <ul>
-            {preview.slice(0, 5).map((p, i) => (
-              <li key={i}>
-                {p.name} · {p.items || '(내용없음)'} · {p.phone || '(번호없음)'}
+          {dupCount > 0 ? <p className="import-dup-note">⚠️ 이미 있는 주문과 같아 보이는 {dupCount}건은 기본으로 빼놨어요. 새 주문이 맞으면 체크해줘.</p> : null}
+          <ul className="import-rows">
+            {preview.slice(0, 60).map((p, i) => (
+              <li key={i} className={dups[i] ? 'is-dup' : ''}>
+                <label>
+                  <input type="checkbox" checked={isOn(i)} onChange={(e) => setOverride((o) => ({ ...o, [i]: e.target.checked }))} />
+                  <span className="import-row-text">
+                    {p.name} · {p.items || '(내용없음)'} · {p.phone || '(번호없음)'}
+                    {dups[i] ? (
+                      <em className="dup-badge">
+                        {dups[i]!.kind === 'existing' ? `이미 있음 · ${new Date(dups[i]!.at || 0).getMonth() + 1}/${new Date(dups[i]!.at || 0).getDate()} 접수` : '목록 안에서 중복'}
+                      </em>
+                    ) : null}
+                  </span>
+                </label>
               </li>
             ))}
-            {preview.length > 5 && <li>…외 {preview.length - 5}건</li>}
+            {preview.length > 60 && <li>…외 {preview.length - 60}건 (목록에 안 보이는 건 중복이 아니면 그대로 가져와요)</li>}
           </ul>
         </div>
       )}
@@ -177,9 +218,9 @@ export function ImportModal({ onImport, onClose }: Props) {
           type="button"
           className="btn btn-primary"
           onClick={handleImport}
-          disabled={parsing || preview.length === 0}
+          disabled={parsing || picked.length === 0}
         >
-          {preview.length > 0 ? `${preview.length}건 가져오기` : '가져오기'}
+          {picked.length > 0 ? `${picked.length}건 가져오기` : '가져오기'}
         </button>
       </div>
     </div>

@@ -24,6 +24,8 @@ import { isFullyShipped } from '../shipments';
 import { Bars, Ring, Sparkline } from '../ui/Charts';
 import { TruckArt } from '../ui/Art';
 import { useProductImages } from '../productImages';
+import { useShopSettings } from '../shop';
+import { costPerGram, monthlyProfit, shipFeeOf } from '../profit';
 
 const DAY = 86400000;
 
@@ -58,8 +60,8 @@ interface Props {
   filament: FilamentState;
   postPending: number;
   smsPending: number;
-  onGo: (tab: 'orders' | 'make' | 'sales' | 'customers' | 'filament') => void;
-  onOpen: (sheet: 'epost' | 'shipsms' | 'tracking' | 'deposit') => void;
+  onGo: (tab: 'orders' | 'make' | 'sales' | 'customers') => void;
+  onOpen: (sheet: 'epost' | 'shipsms' | 'tracking' | 'deposit' | 'filament') => void;
   onNew: () => void;
   onEdit: (o: Order) => void;
   onFilter: (f: '미입금' | '제작중' | '작업중') => void;
@@ -67,6 +69,10 @@ interface Props {
 
 export function Dashboard({ orders, products, filament, postPending, smsPending, onGo, onOpen, onNew, onEdit, onFilter }: Props) {
   const images = useProductImages();
+  const shop = useShopSettings();
+  const cpg = costPerGram(shop, filament).value;
+  const fee = shipFeeOf(shop);
+  const mp = useMemo(() => monthlyProfit(orders, products, cpg, fee, 1)[0], [orders, products, cpg, fee]);
   const d = useMemo(() => {
     const now = Date.now();
     const today = startOfDay(now);
@@ -171,6 +177,12 @@ export function Dashboard({ orders, products, filament, postPending, smsPending,
           {formatWon(d.monthRev)}
           <small>이번달 매출</small>
         </span>
+        {mp && mp.revenue > 0 ? (
+          <span className="hero-profit">
+            예상 순이익 <b>{formatWon(Math.round(mp.net))}</b> · 마진 {Math.round((mp.net / mp.revenue) * 100)}%
+            <small>재료비·택배비 뺀 추정</small>
+          </span>
+        ) : null}
       </section>
 
       <div className="kpis">
@@ -307,7 +319,7 @@ export function Dashboard({ orders, products, filament, postPending, smsPending,
         <section className="panel">
           <div className="panel-head">
             <h3><Spool size={16} />필라멘트 재고</h3>
-            <button type="button" className="link-btn" onClick={() => onGo('filament')}>관리 <ChevronRight size={14} /></button>
+            <button type="button" className="link-btn" onClick={() => onOpen('filament')}>관리 <ChevronRight size={14} /></button>
           </div>
           {d.lowStock.length === 0 ? (
             <p className="muted-line">필라멘트 기록이 없어요</p>
