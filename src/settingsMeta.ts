@@ -1,13 +1,12 @@
-/** Per-key "last edited" timestamps for synced device settings (products, sources, SMS, filament). */
+/** Per-key "last edited" timestamps for synced device settings (products, SMS, filament). */
 const META_KEY = 'cybertruck-settings-meta-v1';
 export const SETTINGS_CHANGED_EVENT = 'cybertruck-settings-changed';
 export const SETTINGS_APPLIED_EVENT = 'cybertruck-settings-applied';
 
-export type SettingKey = 'products' | 'sources' | 'sms' | 'filament' | 'production' | 'expenses' | 'deletedOrders' | 'epostRequest' | 'productImages' | 'shop' | 'epostWebhook';
+export type SettingKey = 'products' | 'sms' | 'filament' | 'production' | 'expenses' | 'deletedOrders' | 'epostRequest' | 'productImages' | 'shop';
 
 export const SETTING_LS_KEYS: Record<SettingKey, string> = {
   products: 'cybertruck-products-v1',
-  sources: 'cybertruck-sources-v1',
   sms: 'cybertruck-sms-templates-v1',
   filament: 'cybertruck-filament-v1',
   production: 'cybertruck-production-settings-v1',
@@ -18,8 +17,6 @@ export const SETTING_LS_KEYS: Record<SettingKey, string> = {
   productImages: 'cybertruck-product-images-v1',
   /** 가게 설정 {bankName, bankNumber, bankHolder, costPerGram …} — 설정 탭 'shop' 행 */
   shop: 'cybertruck-shop-v1',
-  /** 접수 알림 웹훅 {url, key} — 설정 탭 'epostWebhook' 행 (키 단위 최신값 우선) */
-  epostWebhook: 'cybertruck-epost-webhook-v1',
 };
 
 export function getSettingsMeta(): Partial<Record<SettingKey, number>> {
@@ -54,13 +51,13 @@ export function markSettingChanged(key: SettingKey): void {
   }
 }
 
-/* ───────── 항목별 수정 시각 (제품·경로·문자·제작설정) ─────────
- * 설정 한 덩어리를 통째로 덮어쓰지 않고, 항목(제품 1개, 경로 1개, 문자 1종류)마다
+/* ───────── 항목별 수정 시각 (제품·문자·제작설정) ─────────
+ * 설정 한 덩어리를 통째로 덮어쓰지 않고, 항목(제품 1개, 문자 1종류)마다
  * "언제 바뀌었는지/지웠는지"를 기록해서 두 기기 수정이 섞여도 각자 최신 항목이 살아남게 함.
  */
 export type ItemStamp = { u: number; d?: true };
 export type ItemStamps = Partial<Record<SettingKey, Record<string, ItemStamp>>>;
-export const ITEM_KEYS: SettingKey[] = ['products', 'sources', 'sms', 'production', 'productImages', 'shop'];
+export const ITEM_KEYS: SettingKey[] = ['products', 'sms', 'production', 'productImages', 'shop'];
 const STAMPS_KEY = 'cybertruck-item-stamps-v1';
 const SNAP_KEY = 'cybertruck-settings-snap-v1';
 

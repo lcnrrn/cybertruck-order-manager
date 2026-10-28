@@ -139,12 +139,14 @@ export function buildShippingSmsBody(trackingNumber?: string): string {
   return stripTrackingPlaceholder(body);
 }
 
-/** sms: URI — iOS/Android 호환. body는 선택 */
+const isIOS = typeof navigator !== 'undefined' && typeof document !== 'undefined' && /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
+
+/** sms: URI — iPhone 은 번호&body= , 그 외는 번호?body= . body는 선택 (문자 보내기 화면·주문 카드 공용) */
 export function buildSmsLink(phone: string, body?: string): string {
   const digits = phone.replace(/[^\d+]/g, '');
   if (!digits) return '#';
   if (body && body.trim()) {
-    return `sms:${digits}?body=${encodeURIComponent(body.trim())}`;
+    return `sms:${digits}${isIOS ? '&' : '?'}body=${encodeURIComponent(body.trim())}`;
   }
   return `sms:${digits}`;
 }

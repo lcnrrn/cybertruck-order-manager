@@ -269,3 +269,15 @@ export async function parseNaverFormFile(data: ArrayBuffer): Promise<Partial<Ord
   });
   return parseNaverFormRows(rows);
 }
+
+/** 가져온 행의 카페 닉네임(group)을 이름 앞에 붙이고 group 은 비움 (주문 경로 기능은 없어짐) */
+export function applyNickname(partials: Partial<Order>[]): Partial<Order>[] {
+  return partials.map((o) => {
+    const nick = (o.group || '').trim();
+    let name = (o.name || '').trim();
+    if (nick && !name.startsWith(nick)) name = name ? `${nick} ${name}` : nick;
+    const r: Partial<Order> = { ...o, name: name || o.name || '이름없음' };
+    delete r.group;
+    return r;
+  });
+}
