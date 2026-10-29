@@ -89,7 +89,7 @@ export function FilamentInventory({ orders, products, state, onChange, onOpenPro
       }));
     for (const o of orders) {
       const g = sel ? deductedUse(o)[sel.id] : undefined;
-      if (g && o.filamentAt) rows.push({ at: o.filamentAt, g: -g, text: `완료 · ${o.name}` });
+      if (g && o.filamentAt) rows.push({ at: o.filamentAt, g: -g, text: `${o.status === '완료' ? '완료' : '체크 차감'} · ${o.name}` });
     }
     return rows.sort((a, b) => b.at - a.at).slice(0, 40);
   }, [state.entries, orders, sel]);

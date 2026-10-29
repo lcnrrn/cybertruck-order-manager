@@ -264,6 +264,91 @@ export function deductedUse(o: Order): Record<string, number> {
   return {};
 }
 
+/** filamentBase 안의 표식 키 (비어 있는 기준점도 저장되도록) */
+export const BASE_MARK = '~';
+
+function baseDone(fb: Record<string, number> | undefined): Record<string, number> {
+  const d = { ...(fb || {}) };
+  delete d[BASE_MARK];
+  return d;
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+function cleanUse(u: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(u)) if (v > 0.005) out[k] = r2(v);
+  return out;
+}
+
+function sameUse(a: Record<string, number>, b: Record<string, number>): boolean {
+  const ks = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of ks) if (Math.abs((a[k] || 0) - (b[k] || 0)) > 0.005) return false;
+  return true;
+}
+
+/**
+ * 이 주문에서 지금 차감돼 있어야 할 필라멘트 (종류별 g).
+ * - 진행 중: 기준점 이후 새로 만든 만큼 (색상 선택·g 직접입력·구성품 g×개수 반영)
+ * - 완료: 기준점 이후 아직 안 만든 나머지까지 전부 (= 이미 체크로 뺀 것 + 남은 것)
+ */
+export function filamentTarget(
+  o: Pick<Order, 'items' | 'filamentPick' | 'doneMap' | 'filamentGrams' | 'status'>,
+  base: Record<string, number>,
+  catalog: Product[],
+  state: FilamentState,
+): Record<string, number> {
+  if (o.status === '완료') return cleanUse(orderUseByType({ ...o, doneMap: base }, catalog, state, true));
+  const eff: Record<string, number> = {};
+  for (const [k, v] of Object.entries(o.doneMap || {})) {
+    if (k.endsWith('::%')) continue;
+    const e = v - (base[k] || 0);
+    if (e > 0) eff[k] = e;
+  }
+  const full = orderUseByType(o, catalog, state, false);
+  const rem = orderUseByType({ ...o, doneMap: eff }, catalog, state, true);
+  const made: Record<string, number> = {};
+  for (const t of Object.keys(full)) made[t] = Math.max(0, full[t] - (rem[t] || 0));
+  return cleanUse(made);
+}
+
+/**
+ * 주문이 바뀔 때마다 부르면 필라멘트 차감(filamentUse/G/At)을 목표치로 맞춤.
+ * 제작 체크 → 즉시 차감, 체크 해제 → 되돌림, 완료 → 남은 것만 추가 차감(중복 없음), 완료 해제 → 되돌림.
+ * 관련 변화(체크·상태·품목·색상·g)가 없으면 next 를 그대로 돌려줌. 기준점이 없는 옛 완료 주문은 건드리지 않음.
+ */
+export function reconcileFilament(prev: Order | null, next: Order, catalog: Product[], state: FilamentState, now = Date.now()): Order {
+  const j = (v: unknown) => JSON.stringify(v ?? null);
+  const tracked = !!next.filamentBase;
+  const changedDone = j(prev?.doneMap) !== j(next.doneMap);
+  const statusChanged = (prev?.status === '완료') !== (next.status === '완료');
+  const slotsChanged = tracked && !!prev && (prev.items !== next.items || j(prev.filamentPick) !== j(next.filamentPick) || j(prev.filamentGrams) !== j(next.filamentGrams));
+  if (!changedDone && !statusChanged && !slotsChanged) return next;
+  if (!tracked && prev && prev.status === '완료' && next.status === '완료') return next; // 옛 방식으로 이미 차감된 완료 주문
+  let fb = next.filamentBase;
+  if (!fb) {
+    const legacyFull = !!prev && prev.status === '완료' && Object.keys(deductedUse(prev)).length > 0;
+    fb = { ...(legacyFull ? {} : prev?.doneMap || {}), [BASE_MARK]: 1 };
+  }
+  const target = filamentTarget(next, baseDone(fb), catalog, state);
+  const cur = cleanUse(deductedUse(next));
+  const out: Order = { ...next, filamentBase: fb };
+  if (sameUse(cur, target) && next.filamentBase) return next;
+  if (!sameUse(cur, target)) {
+    const g = Object.values(target).reduce((a, b) => a + b, 0);
+    if (g > 0) {
+      out.filamentUse = target;
+      out.filamentG = r2(g);
+      out.filamentAt = now;
+    } else {
+      delete out.filamentUse;
+      delete out.filamentG;
+      delete out.filamentAt;
+    }
+  }
+  return out;
+}
+
 export interface NeedLine {
   orderId: string;
   orderName: string;

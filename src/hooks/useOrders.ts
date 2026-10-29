@@ -5,31 +5,9 @@ import { loadOrders, saveOrders } from '../storage';
 import { orderTimestamp, resolvePeriodBounds } from '../period';
 import type { Product } from '../products';
 import { isUnpaid } from '../production';
-import { loadFilament, orderUseByType } from '../filament';
+import { loadFilament, reconcileFilament } from '../filament';
 import { markOrderDeleted } from '../deletedOrders';
 import { compactSeq, compareOrders, compareOrdersNewest, isActive, moveSeq, setSeq } from '../sequence';
-
-/** 완료 전환 시 필라멘트 차감 기록, 완료 해제 시 되돌림 (중복 차감 방지) */
-function applyFilament(prev: Order, next: Order, catalog: Product[]): Order {
-  if (next.status === '완료' && prev.status !== '완료' && next.filamentG === undefined && !next.filamentUse) {
-    return withDeduction(next, catalog, Date.now());
-  }
-  if (next.status !== '완료' && prev.status === '완료' && (next.filamentG !== undefined || next.filamentUse)) {
-    const r = { ...next };
-    delete r.filamentG;
-    delete r.filamentAt;
-    delete r.filamentUse;
-    return r;
-  }
-  return next;
-}
-
-function withDeduction(o: Order, catalog: Product[], now: number): Order {
-  const use = orderUseByType(o, catalog, loadFilament());
-  const g = Object.values(use).reduce((a, b) => a + b, 0);
-  if (g > 0) return { ...o, filamentG: g, filamentAt: now, filamentUse: use };
-  return o;
-}
 
 function uid(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -66,9 +44,7 @@ export function useOrders(products: Product[] = []) {
       createdAt: data.createdAt || now,
       updatedAt: now,
     };
-    if (order.status === '완료') {
-      order = withDeduction(order, productsRef.current, now);
-    }
+    order = reconcileFilament(null, order, productsRef.current, loadFilament(), now);
     setOrders((prev) => [order, ...prev]);
     return order;
   }, []);
@@ -79,7 +55,6 @@ export function useOrders(products: Product[] = []) {
       const mapped = prev.map((o) => {
         if (o.id !== id) return o;
         let next: Order = { ...o, ...patch, id: o.id, updatedAt: Date.now() };
-        next = applyFilament(o, next, productsRef.current);
         if ('filamentPick' in patch && !patch.filamentPick) delete next.filamentPick;
         if ('prices' in patch && !patch.prices) delete next.prices;
         if ('filamentGrams' in patch && !patch.filamentGrams) delete next.filamentGrams;
@@ -97,6 +72,7 @@ export function useOrders(products: Product[] = []) {
           else delete next.trackingNumber;
         }
         if ('doneMap' in patch && (!patch.doneMap || !Object.keys(patch.doneMap).length)) delete next.doneMap;
+        next = reconcileFilament(o, next, productsRef.current, loadFilament());
         if (!isActive(next) && next.seq !== undefined) {
           delete next.seq;
           leftQueue = true;
@@ -128,14 +104,14 @@ export function useOrders(products: Product[] = []) {
         const next: Order = { ...o, doneMap, updatedAt: Date.now() };
         if (!Object.keys(doneMap).length) delete next.doneMap;
         if (count > 0 && o.status === '대기') next.status = '제작중';
-        return next;
+        return reconcileFilament(o, next, productsRef.current, loadFilament());
       }),
     );
   }, []);
 
   /** 주문 하나를 함수로 갱신 (null 반환 시 변경 없음) */
   const transformOrder = useCallback((id: string, fn: (o: Order) => Order | null) => {
-    setOrders((prev) => prev.map((o) => (o.id === id ? fn(o) || o : o)));
+    setOrders((prev) => prev.map((o) => (o.id === id ? reconcileFilament(o, fn(o) || o, productsRef.current, loadFilament()) : o)));
   }, []);
 
   const deleteOrder = useCallback((id: string) => {
