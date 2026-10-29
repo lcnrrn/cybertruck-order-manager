@@ -125,7 +125,7 @@ export function orderToRow(o: Order): string[] {
       p: o.prices,
       g: o.filamentGrams,
       sh: o.shipments?.length ? o.shipments : undefined,
-      x: { a: o.amount, pd: o.paid ? 1 : undefined, pa: o.paidAt, fg: o.filamentG, fa: o.filamentAt, fu: o.filamentUse, fp: o.filamentPick },
+      x: { a: o.amount, pd: o.paid ? 1 : undefined, pa: o.paidAt, fg: o.filamentG, fa: o.filamentAt, fu: o.filamentUse, fp: o.filamentPick, fb: o.filamentBase },
     }),
   ];
 }
@@ -202,6 +202,9 @@ export function rowToOrder(row: string[], sheetMisaligned = false): Order | null
       const fp = strMap(x.fp);
       if (fu) out.filamentUse = fu;
       else delete out.filamentUse;
+      const fb = numMap(x.fb);
+      if (fb) out.filamentBase = fb;
+      else delete out.filamentBase;
       if (fp) out.filamentPick = fp;
       else delete out.filamentPick;
     }
@@ -389,7 +392,7 @@ export async function patchOrders(accessToken: string, orders: Order[]): Promise
 }
 
 /** 시트 L~R 열에 해당하는 주문 필드 */
-const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
+const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentBase', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
 
 function stripPartial(o: Order): Order {
   if (!o._partial && !o._legacy) return o;

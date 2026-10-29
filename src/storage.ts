@@ -48,6 +48,7 @@ export function normalizeOrder(raw: unknown): Order | null {
     filamentG: num(o.filamentG),
     filamentAt: num(o.filamentAt),
     filamentUse: numMap(o.filamentUse),
+    filamentBase: numMap(o.filamentBase),
     filamentPick: strMap(o.filamentPick),
     seq: num(o.seq) && (o.seq as number) > 0 ? (o.seq as number) : undefined,
     doneMap: numMap(o.doneMap),

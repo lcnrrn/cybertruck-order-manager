@@ -61,7 +61,7 @@ export function dirtyOrderIds(local: Order[]): string[] {
   return local.filter((o) => !isSampleOrderId(o.id) && base[o.id] !== orderHash(o)).map((o) => o.id);
 }
 
-const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
+const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentBase', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
 
 function clean(o: Order): Order {
   if (!o._partial && !o._legacy) return o;

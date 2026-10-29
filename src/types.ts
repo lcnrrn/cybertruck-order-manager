@@ -53,6 +53,8 @@ export interface Order {
   filamentAt?: number;
   /** 완료 시 종류별 차감량(g) {filamentTypeId: g} */
   filamentUse?: Record<string, number>;
+  /** 제작 체크 즉시 차감의 기준점: 차감 추적을 시작할 때 이미 만들어져 있던 개수(doneMap 사본, '~' 표식 포함). 이 값 이하로 만든 건 다시 차감하지 않음 */
+  filamentBase?: Record<string, number>;
   /** 제품 구성별 필라멘트 종류 선택 {'제품명#순번': filamentTypeId} */
   filamentPick?: Record<string, string>;
   /** 사용자가 정한 제작 순번 (대기/제작중만 의미 있음) */
