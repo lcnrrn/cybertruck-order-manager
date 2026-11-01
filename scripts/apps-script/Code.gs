@@ -51,6 +51,55 @@ function uid_() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
 }
 
+// ── 블랙리스트 (앱 「더보기 → 블랙리스트」 에서 관리, 설정 탭 'blacklist' 행) ──
+// 앱의 src/blacklist.ts 와 같은 규칙이에요 — 고치면 둘 다 고치세요.
+// 걸려도 구매자에게는 '블랙리스트'라는 말 없이 일반 안내만 보여요.
+var BLACKLIST_MSG = '죄송합니다. 지금은 주문을 접수하기 어려워요. 문의는 카페 쪽지로 부탁드립니다.';
+
+function normPhone_(raw) {
+  var d = String(raw || '').replace(/\D/g, '');
+  if (d.indexOf('82') === 0 && d.length >= 11) d = '0' + d.slice(2);
+  return d;
+}
+function cleanAddr_(s) { return String(s || '').toLowerCase().replace(/[^0-9a-z가-힣]/g, ''); }
+function normAddr_(raw) { return cleanAddr_(String(raw || '').normalize('NFC').replace(/\([^)]*\)/g, ' ')); }
+var ROAD_RE_ = /[0-9a-z가-힣]+(?:대로|로|길)\s*\d+(?:-\d+)?(?:\s*번?길\s*\d+(?:-\d+)?)?/;
+function splitAddr_(raw) {
+  var s = String(raw || '').normalize('NFC').toLowerCase().replace(/\([^)]*\)/g, ' ');
+  var m = ROAD_RE_.exec(s);
+  if (!m) return null;
+  var before = s.slice(0, m.index);
+  var areaM = before.match(/[0-9a-z가-힣]+(?:구|군|시)(?=[^0-9a-z가-힣]|$)/g);
+  var area = areaM ? cleanAddr_(areaM[areaM.length - 1]) : '';
+  var rest = s.slice(m.index + m[0].length);
+  var dd = rest.replace(/\D/g, '');
+  return { area: area, core: cleanAddr_(m[0]), detail: dd || cleanAddr_(rest) };
+}
+function sameAddr_(blAddr, orderAddr) {
+  var a = splitAddr_(blAddr), b = splitAddr_(orderAddr);
+  if (a && b) {
+    if (a.core !== b.core) return false;
+    if (a.area && b.area && a.area !== b.area) return false;
+    return !a.detail || a.detail === b.detail;
+  }
+  var x = normAddr_(blAddr), y = normAddr_(orderAddr);
+  return x.length >= 6 && x === y;
+}
+function blacklisted_(phone, address) {
+  try {
+    var map = setting_('blacklist') || {};
+    var p = normPhone_(phone);
+    var keys = Object.keys(map);
+    for (var i = 0; i < keys.length; i++) {
+      var e = map[keys[i]] || {};
+      var ep = normPhone_(e.phone);
+      if (p.length >= 9 && ep.length >= 9 && p === ep) return true;
+      if (String(e.address || '').trim().length >= 5 && String(address || '').trim().length >= 5 && sameAddr_(String(e.address), address)) return true;
+    }
+  } catch (err) { /* 읽기 실패 시에는 주문을 막지 않음 */ }
+  return false;
+}
+
 function doPost(e) {
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
@@ -63,6 +112,7 @@ function doPost(e) {
     var memo = clip_(body.memo, 500);
     if (!name || !nick || phone.length < 10 || address.length < 5) return json_({ ok: false, error: '필수 항목을 확인해 주세요' });
     if (!body.agree) return json_({ ok: false, error: '개인정보 수집·이용에 동의해 주세요' });
+    if (blacklisted_(body.phone, address)) return json_({ ok: false, error: BLACKLIST_MSG });
 
     var cat = catalog_();
     var names = {};

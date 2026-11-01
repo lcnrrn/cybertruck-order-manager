@@ -28,6 +28,11 @@ import { SalesReport } from './components/SalesReport';
 import { FilamentInventory } from './components/FilamentInventory';
 import { loadFilament, saveFilament, type FilamentState } from './filament';
 import { SETTINGS_APPLIED_EVENT } from './settingsMeta';
+import { ExpenseToRefundPanel, RefundPanel, type RefundInput } from './components/RefundPanels';
+import { BlacklistPanel } from './components/BlacklistPanel';
+import { useBlacklist } from './blacklist';
+import { applyRefund, removeRefund } from './refunds';
+import { loadExpenses, saveExpenses } from './expenses';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
@@ -56,6 +61,7 @@ import {
   House,
   Landmark,
   Link,
+  Ban,
   Mailbox,
   MessageSquare,
   MessageSquareText,
@@ -71,7 +77,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
-type Sheet = 'none' | 'deposit' | 'shop' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'filament' | 'backup' | 'epost' | 'shipsms';
+type Sheet = 'none' | 'deposit' | 'shop' | 'form' | 'import' | 'google' | 'products' | 'tracking' | 'sms' | 'filament' | 'backup' | 'epost' | 'shipsms' | 'refund' | 'exp2refund' | 'blacklist';
 
 type Tab = 'home' | 'orders' | 'make' | 'sales' | 'customers' | 'more';
 const TAB_KEY = 'cybertruck-last-tab-v2';
@@ -86,6 +92,7 @@ const TABS: { id: Tab; icon: LucideIcon; label: string; title: string }[] = [
 const MORE_ITEMS: { id: Sheet; icon: LucideIcon; color: string; label: string; desc: string }[] = [
   { id: 'epost', icon: Mailbox, color: 'linear-gradient(135deg,#f472b6,#be185d)', label: '우체국 접수', desc: '전송 대기 확인 · 접수 요청 · 접수 내역' },
   { id: 'shipsms', icon: MessageSquare, color: 'linear-gradient(135deg,#a78bfa,#6d28d9)', label: '발송 문자 보내기', desc: '송장 나온 건 발송안내 문자 모아보기 · 보냄 체크' },
+  { id: 'blacklist', icon: Ban, color: 'linear-gradient(135deg,#f87171,#991b1b)', label: '블랙리스트', desc: '번호 · 주소가 같으면 구매 요청 자동 거절' },
   { id: 'deposit', icon: Landmark, color: 'linear-gradient(135deg,#4ade80,#15803d)', label: '입금 확인', desc: '은행 거래내역 붙여넣기 → 미입금 주문 자동 짝찾기' },
   { id: 'shop', icon: Store, color: 'linear-gradient(135deg,#f9a8d4,#7c3aed)', label: '가게 · 구매자 안내', desc: '입금 계좌 · 주문/조회 링크 · 원가 기준' },
   { id: 'products', icon: Package, color: 'linear-gradient(135deg,#5ee1ff,#2563eb)', label: '제품 관리', desc: '사진 · 판매가 · 필라멘트 g · 출력 시간' },
@@ -220,6 +227,16 @@ export default function App() {
   const [sheet, setSheet] = useState<Sheet>('none');
   const [cmdOpen, setCmdOpen] = useState(false);
   const [editing, setEditing] = useState<Order | null>(null);
+  const blacklist = useBlacklist();
+  useEffect(() => {
+    if (sheet === 'none') {
+      setBlDraft(null);
+      setMoveExpense(null);
+    }
+  }, [sheet]);
+  const [refundId, setRefundId] = useState<string | null>(null);
+  const [moveExpense, setMoveExpense] = useState<{ id: string; at: number; amount: number; note: string } | null>(null);
+  const [blDraft, setBlDraft] = useState<{ name?: string; phone?: string; address?: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [tab, setTabState] = useState<Tab>(loadTab);
   const scrollByTab = useRef<Partial<Record<Tab, number>>>({});
@@ -348,6 +365,7 @@ export default function App() {
       대기: 0,
       제작중: 0,
       완료: 0,
+      환불: 0,
       미입금: 0,
     };
     for (const o of orders) {
@@ -522,6 +540,15 @@ export default function App() {
       const target = orders.find((x) => x.id === id);
       if (target) updateOrder(id, { priority: !target.priority });
     },
+    blacklist,
+    onRefund: (o: Order) => {
+      setRefundId(o.id);
+      setSheet('refund');
+    },
+    onBlacklist: (o: Order) => {
+      setBlDraft({ name: o.name.replace(/\s*\d+번\s*$/, '').trim(), phone: o.phone, address: o.address });
+      setSheet('blacklist');
+    },
     onItemDone: (id: string, key: string, count: number) => setItemDone(id, key, count),
     onPartDone: (id: string, product: string, part: string, count: number) => setPartDone(id, product, part, count),
     onMakeAll: (id: string) => {
@@ -540,6 +567,33 @@ export default function App() {
       showToast('전송 요청을 취소했어요');
     },
   };
+  /** 환불 기록 (부분/전액). 전액이면 상태 '환불' */
+  const addRefundTo = (id: string, r: RefundInput): boolean => {
+    const o = orders.find((x) => x.id === id);
+    if (!o || r.amount <= 0) return false;
+    transformOrder(id, (cur) => ({ ...applyRefund(cur, products, r, true), updatedAt: Date.now() }));
+    return true;
+  };
+  const refundOrder = refundId ? orders.find((o) => o.id === refundId) || null : null;
+  const moveExpenseToRefund = (orderId: string, r: RefundInput) => {
+    if (blocked() || !moveExpense) return;
+    const st = loadExpenses();
+    const now = Date.now();
+    if (!st.items.some((x) => x.id === moveExpense.id && !x.deleted)) {
+      showToast('그 지출이 이미 없어요');
+      return;
+    }
+    if (!addRefundTo(orderId, { ...r, memo: r.memo || moveExpense.note })) return;
+    saveExpenses({ ...st, items: st.items.map((x) => (x.id === moveExpense.id ? { ...x, deleted: true, updatedAt: now } : x)) });
+    try {
+      window.dispatchEvent(new CustomEvent(SETTINGS_APPLIED_EVENT));
+    } catch {
+      /* ignore */
+    }
+    showToast('지출을 환불로 옮겼어요');
+    setMoveExpense(null);
+    setSheet('none');
+  };
   const postPending = useMemo(() => pendingShipmentCount(orders), [orders]);
   const smsPending = useMemo(() => orders.reduce((n, o) => n + smsPendingShipments(o).length, 0), [orders]);
 
@@ -552,7 +606,7 @@ export default function App() {
     const names = products.map((p) => p.name);
     const add: string[] = [];
     for (const o of orders) {
-      if (o.status === '완료' || doneIds.includes(o.id) || !o.shipments?.length) continue;
+      if (o.status === '완료' || o.status === '환불' || doneIds.includes(o.id) || !o.shipments?.length) continue;
       const prog = orderItemProgress(o, names);
       if (isFullyShipped(o, prog) || isFullyDelivered(o, prog)) add.push(o.id);
     }
@@ -845,6 +899,10 @@ export default function App() {
               showToast(`${ids.length}건 입금완료 처리`);
             }}
             onEdit={(o) => openEdit(o)}
+            onExpenseToRefund={(e) => {
+              setMoveExpense(e);
+              setSheet('exp2refund');
+            }}
             onClose={() => switchTab('orders')}
           />
           )}
@@ -927,6 +985,48 @@ export default function App() {
                 onClose={() => setSheet('none')}
               />
             )}
+            {sheet === 'refund' && refundOrder && (
+              <RefundPanel
+                order={refundOrder}
+                products={products}
+                onAdd={(r) => {
+                  if (blocked()) return;
+                  const full = addRefundTo(refundOrder.id, r);
+                  if (full) showToast(`↩ 환불 ${formatWon(r.amount)} 기록 (매출에서 빠져요)`);
+                  setSheet('none');
+                }}
+                onRemove={(rid) => {
+                  if (blocked()) return;
+                  transformOrder(refundOrder.id, (cur) => ({ ...removeRefund(cur, rid), updatedAt: Date.now() }));
+                  showToast('환불 기록을 지웠어요');
+                }}
+                onClose={() => setSheet('none')}
+              />
+            )}
+            {sheet === 'exp2refund' && moveExpense && (
+              <ExpenseToRefundPanel
+                expense={moveExpense}
+                orders={orders}
+                products={products}
+                onConfirm={moveExpenseToRefund}
+                onClose={() => {
+                  setMoveExpense(null);
+                  setSheet('none');
+                }}
+              />
+            )}
+            {sheet === 'blacklist' && (
+              <BlacklistPanel
+                list={blacklist}
+                draft={blDraft}
+                orders={orders}
+                onToast={showToast}
+                onClose={() => {
+                  setBlDraft(null);
+                  setSheet('none');
+                }}
+              />
+            )}
             {sheet === 'deposit' && (
               <DepositMatch
                 orders={orders}
@@ -964,6 +1064,7 @@ export default function App() {
               <div className="sheet-body">
                 <OrderForm
                   initial={editing}
+                  blacklist={blacklist}
                   products={products}
                   filament={filament}
                   onSubmit={handleFormSubmit}
@@ -975,7 +1076,7 @@ export default function App() {
               </div>
             )}
             {sheet === 'import' && (
-              <ImportModal existing={orders} onImport={handleImport} onClose={() => setSheet('none')} />
+              <ImportModal existing={orders} blacklist={blacklist} onImport={handleImport} onClose={() => setSheet('none')} />
             )}
             {sheet === 'google' && (
               <div className="sheet-body">
@@ -1031,7 +1132,7 @@ export default function App() {
                     if (cur?.shipments?.some((x) => x.postStatus !== 'cancelled')) {
                       const next = attachTracking(cur, u.trackingNumber);
                       transformOrder(u.orderId, () => next);
-                      if (cur.status !== '완료' && isFullyShipped(next, orderItemProgress(next, names))) setStatus(u.orderId, '완료');
+                      if (cur.status !== '완료' && cur.status !== '환불' && isFullyShipped(next, orderItemProgress(next, names))) setStatus(u.orderId, '완료');
                     } else {
                       updateOrder(u.orderId, { trackingNumber: u.trackingNumber });
                     }
