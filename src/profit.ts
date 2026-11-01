@@ -3,7 +3,8 @@ import type { Product } from './products';
 import type { FilamentState } from './filament';
 import { liveEntries } from './filament';
 import type { ShopSettings } from './shop';
-import { orderAmount, orderGrams, parseOrderProducts, unitPrice } from './production';
+import { orderNet } from './refunds';
+import { orderGrams, parseOrderProducts, unitPrice } from './production';
 
 export const DEFAULT_COST_PER_GRAM = 20; // PLA 1kg ≈ 2만 원
 export const DEFAULT_SHIP_FEE = 4000;
@@ -38,7 +39,7 @@ export interface OrderProfit {
 
 /** 주문 1건: 매출 − (필라멘트 g × 1g 원가) − 택배비(우체국 요금 기록 > 기본값) */
 export function orderProfit(o: Order, catalog: Product[], cpg: number, shipFee: number): OrderProfit {
-  const revenue = orderAmount(o, catalog);
+  const revenue = orderNet(o, catalog); // 환불 뺀 순매출
   const grams = orderGrams(o, catalog);
   const material = grams * cpg;
   const ships = (o.shipments || []).filter((s) => s.postStatus !== 'cancelled');

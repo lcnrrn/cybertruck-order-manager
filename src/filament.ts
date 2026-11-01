@@ -318,6 +318,7 @@ export function filamentTarget(
  * 관련 변화(체크·상태·품목·색상·g)가 없으면 next 를 그대로 돌려줌. 기준점이 없는 옛 완료 주문은 건드리지 않음.
  */
 export function reconcileFilament(prev: Order | null, next: Order, catalog: Product[], state: FilamentState, now = Date.now()): Order {
+  if (next.status === '환불') return next; // 환불 주문: 이미 차감된 필라멘트는 그대로 둠 (되돌리려면 사용자가 체크 해제)
   const j = (v: unknown) => JSON.stringify(v ?? null);
   const tracked = !!next.filamentBase;
   const changedDone = j(prev?.doneMap) !== j(next.doneMap);
@@ -327,7 +328,7 @@ export function reconcileFilament(prev: Order | null, next: Order, catalog: Prod
   if (!tracked && prev && prev.status === '완료' && next.status === '완료') return next; // 옛 방식으로 이미 차감된 완료 주문
   let fb = next.filamentBase;
   if (!fb) {
-    const legacyFull = !!prev && prev.status === '완료' && Object.keys(deductedUse(prev)).length > 0;
+    const legacyFull = !!prev && (prev.status === '완료' || prev.status === '환불') && Object.keys(deductedUse(prev)).length > 0;
     fb = { ...(legacyFull ? {} : prev?.doneMap || {}), [BASE_MARK]: 1 };
   }
   const target = filamentTarget(next, baseDone(fb), catalog, state);

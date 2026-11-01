@@ -318,7 +318,7 @@ export function orderAmount(order: Order, catalog: Product[]): number {
 }
 
 export function isUnpaid(order: Order, catalog: Product[]): boolean {
-  return !order.paid && orderAmount(order, catalog) > 0;
+  return !order.paid && order.status !== '환불' && orderAmount(order, catalog) > 0;
 }
 
 /** 주문 1건 필라멘트 소모량(g) */
