@@ -1,4 +1,5 @@
 import { parseShipments } from './shipments';
+import { parseRefunds } from './refunds';
 import type { Order, OrderStatus } from './types';
 import { STORAGE_KEY } from './types';
 import { SAMPLE_ORDERS } from './sampleData';
@@ -12,7 +13,7 @@ const LEGACY_STORAGE_KEYS = [
 ] as const;
 
 function parseStatus(raw: unknown): OrderStatus {
-  if (raw === '제작중' || raw === '완료' || raw === '대기') return raw;
+  if (raw === '제작중' || raw === '완료' || raw === '대기' || raw === '환불') return raw;
   return '대기';
 }
 
@@ -55,6 +56,7 @@ export function normalizeOrder(raw: unknown): Order | null {
     prices: numMap(o.prices),
     filamentGrams: numMap(o.filamentGrams),
     shipments: parseShipments(o.shipments),
+    refunds: parseRefunds(o.refunds),
     createdAt,
     updatedAt,
   };

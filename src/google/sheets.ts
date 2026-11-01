@@ -1,5 +1,6 @@
 import { BUILD_ID } from '../appVersion';
 import { mergeShipments, parseShipments } from '../shipments';
+import { parseRefunds } from '../refunds';
 import { numMap, strMap } from '../storage';
 import type { Order, OrderStatus } from '../types';
 import { isSampleOrderId, isSampleOnly } from '../storage';
@@ -125,13 +126,14 @@ export function orderToRow(o: Order): string[] {
       p: o.prices,
       g: o.filamentGrams,
       sh: o.shipments?.length ? o.shipments : undefined,
+      rf: o.refunds?.length ? o.refunds : undefined,
       x: { a: o.amount, pd: o.paid ? 1 : undefined, pa: o.paidAt, fg: o.filamentG, fa: o.filamentAt, fu: o.filamentUse, fp: o.filamentPick, fb: o.filamentBase },
     }),
   ];
 }
 
 function parseStatus(raw: string): OrderStatus {
-  if (raw === '제작중' || raw === '완료' || raw === '대기') return raw;
+  if (raw === '제작중' || raw === '완료' || raw === '대기' || raw === '환불') return raw;
   return '대기';
 }
 
@@ -232,13 +234,13 @@ function parseFilamentCol(raw: string | undefined): Pick<Order, 'filamentUse' | 
   }
 }
 
-function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams' | 'shipments'> {
+function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams' | 'shipments' | 'refunds'> {
   const t = String(raw ?? '').trim();
   if (!t) return {};
   try {
-    const j = JSON.parse(t) as { i?: unknown; s?: unknown; d?: unknown; p?: unknown; g?: unknown; sh?: unknown };
+    const j = JSON.parse(t) as { i?: unknown; s?: unknown; d?: unknown; p?: unknown; g?: unknown; sh?: unknown; rf?: unknown };
     if (j.i !== id) return {};
-    const out: Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams' | 'shipments'> = {};
+    const out: Pick<Order, 'seq' | 'doneMap' | 'prices' | 'filamentGrams' | 'shipments' | 'refunds'> = {};
     if (typeof j.s === 'number' && j.s > 0) out.seq = j.s;
     const d = numMap(j.d);
     if (d) out.doneMap = d;
@@ -248,6 +250,8 @@ function parseProgressCol(raw: string | undefined, id: string): Pick<Order, 'seq
     if (g) out.filamentGrams = g;
     const sh = parseShipments(j.sh);
     if (sh) out.shipments = sh;
+    const rf = parseRefunds(j.rf);
+    if (rf) out.refunds = rf;
     return out;
   } catch {
     return {};
@@ -392,7 +396,7 @@ export async function patchOrders(accessToken: string, orders: Order[]): Promise
 }
 
 /** 시트 L~R 열에 해당하는 주문 필드 */
-const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentBase', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments'] as const;
+const DETAIL_KEYS = ['amount', 'paid', 'paidAt', 'filamentG', 'filamentAt', 'filamentUse', 'filamentBase', 'filamentPick', 'seq', 'doneMap', 'prices', 'filamentGrams', 'shipments', 'refunds'] as const;
 
 function stripPartial(o: Order): Order {
   if (!o._partial && !o._legacy) return o;
