@@ -14,12 +14,20 @@ export function BalanceBreakdown({ est, detail = false }: { est: BalanceEstimate
       <div className="bal-est-rows">
         <div><span>기준 잔고 <small>({fmtAt(est.base.at)} 입력)</small></span><b>{formatWon(est.base.amount)}</b></div>
         <div className="plus"><span>＋ 입금 {est.deposits.length}건</span><b>{formatWon(est.depositSum)}</b></div>
+        {est.refundSum > 0 && <div className="minus"><span>− 환불 {est.refunds.length}건</span><b>{formatWon(est.refundSum)}</b></div>}
         <div className="minus"><span>− 지출</span><b>{formatWon(est.spent)}</b></div>
       </div>
       {detail && est.deposits.length > 0 && (
         <ul className="bal-est-list">
           {est.deposits.map((d) => (
             <li key={d.id}><span>{d.name} <small>{fmtAt(d.at)}</small></span><b>+{formatWon(d.amount)}</b></li>
+          ))}
+        </ul>
+      )}
+      {detail && est.refunds.length > 0 && (
+        <ul className="bal-est-list">
+          {est.refunds.map((d) => (
+            <li key={d.id}><span>{d.name} 환불 <small>{fmtAt(d.at)}</small></span><b>−{formatWon(d.amount)}</b></li>
           ))}
         </ul>
       )}

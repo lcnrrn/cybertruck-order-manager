@@ -3,6 +3,7 @@ import { loadFilament } from './filament';
 import type { Order } from './types';
 import type { Product } from './products';
 import { orderAmount } from './production';
+import { refundTotal } from './refunds';
 import { SETTING_LS_KEYS, SETTINGS_APPLIED_EVENT, markSettingChanged, type SettingKey } from './settingsMeta';
 
 function fmtDate(ms?: number): string {
@@ -41,6 +42,8 @@ export async function exportOrdersXlsx(orders: Order[], products: Product[], lab
     우선: o.priority ? '★' : '',
     금액: orderAmount(o, products),
     금액직접입력: o.amount !== undefined ? 'Y' : '',
+    환불액: refundTotal(o) || '',
+    순금액: orderAmount(o, products) - refundTotal(o),
     입금: o.paid ? '입금완료' : '미입금',
     입금일: fmtDate(o.paidAt),
     송장번호: o.trackingNumber || '',
@@ -49,7 +52,7 @@ export async function exportOrdersXlsx(orders: Order[], products: Product[], lab
     id: o.id,
   }));
   const ws = XLSX.utils.json_to_sheet(rows);
-  ws['!cols'] = [16, 10, 14, 36, 40, 10, 8, 5, 10, 8, 9, 16, 16, 9, 16, 12].map((wch) => ({ wch }));
+  ws['!cols'] = [16, 10, 14, 36, 40, 10, 8, 5, 10, 9, 9, 8, 9, 16, 16, 9, 16, 12].map((wch) => ({ wch }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '주문');
   const lines = expenseLines(loadExpenses(), loadFilament()).sort((x, y) => x.at - y.at);
@@ -59,6 +62,12 @@ export async function exportOrdersXlsx(orders: Order[], products: Product[], lab
     );
     ws2['!cols'] = [16, 10, 40, 12].map((wch) => ({ wch }));
     XLSX.utils.book_append_sheet(wb, ws2, '지출');
+  }
+  const refundList = sorted.flatMap((o) => (o.refunds || []).map((r) => ({ 환불일: fmtDate(r.at), 이름: o.name, 연락처: o.phone, 환불액: -r.amount, 메모: r.memo || '', 주문id: o.id })));
+  if (refundList.length) {
+    const ws3 = XLSX.utils.json_to_sheet(refundList);
+    ws3['!cols'] = [16, 10, 14, 12, 30, 16].map((wch) => ({ wch }));
+    XLSX.utils.book_append_sheet(wb, ws3, '환불');
   }
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer;
   download(
@@ -78,7 +87,10 @@ function monthKeyOf(ms: number): string {
 /** 장부 기간 선택지: 주문이 있는 달 (최신순) */
 export function ledgerMonths(orders: Order[]): string[] {
   const set = new Set<string>();
-  for (const o of orders) set.add(monthKeyOf(o.createdAt || o.updatedAt));
+  for (const o of orders) {
+    set.add(monthKeyOf(o.createdAt || o.updatedAt));
+    for (const r of o.refunds || []) set.add(monthKeyOf(r.at));
+  }
   return [...set].sort().reverse();
 }
 
@@ -92,6 +104,12 @@ export async function exportLedgerXlsx(orders: Order[], products: Product[], mon
   const list = orders.filter((o) => inMonth(o.createdAt || o.updatedAt)).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const lines = expenseLines(loadExpenses(), loadFilament()).filter((l) => inMonth(l.at)).sort((x, y) => x.at - y.at);
   const supply = (n: number) => Math.round(n / 1.1);
+  // 환불: 환불한 날이 그 달에 속하면 장부에 음수 매출로 기록
+  const refundLines = orders
+    .flatMap((o) => (o.refunds || []).map((r) => ({ o, r })))
+    .filter((x) => inMonth(x.r.at))
+    .sort((a, b) => a.r.at - b.r.at);
+  const refundSum = refundLines.reduce((a, x) => a + x.r.amount, 0);
 
   const sales = list.map((o) => {
     const amt = orderAmount(o, products);
@@ -109,8 +127,24 @@ export async function exportLedgerXlsx(orders: Order[], products: Product[], mon
       송장번호: o.trackingNumber || (o.shipments || []).map((x) => x.trackingNumber).filter(Boolean).join(', '),
     };
   });
-  const sum = (k: '합계금액' | '공급가액' | '부가세') => sales.reduce((a, r) => a + r[k], 0);
+  const refundRows = refundLines.map(({ o, r }) => ({
+    접수일: ymdOf(o.createdAt || o.updatedAt),
+    입금일: ymdOf(r.at),
+    이름: o.name,
+    연락처: o.phone,
+    주문내용: `[환불] ${r.memo || o.items}`,
+    합계금액: -r.amount,
+    공급가액: -supply(r.amount),
+    부가세: -(r.amount - supply(r.amount)),
+    입금: '환불',
+    상태: o.status === '환불' ? '환불' : o.status,
+    송장번호: '',
+  }));
+  const salesAll = [...sales, ...refundRows];
+  const grossSum = sales.reduce((a, r) => a + r.합계금액, 0);
+  const sum = (k: '합계금액' | '공급가액' | '부가세') => salesAll.reduce((a, r) => a + r[k], 0);
   const paidSum = list.filter((o) => o.paid).reduce((a, o) => a + orderAmount(o, products), 0);
+  const unpaidSum = list.filter((o) => !o.paid && o.status !== '환불').reduce((a, o) => a + orderAmount(o, products), 0);
   const expSum = lines.reduce((a, l) => a + l.amount, 0);
 
   const wb = XLSX.utils.book_new();
@@ -118,11 +152,13 @@ export async function exportLedgerXlsx(orders: Order[], products: Product[], mon
     ['항목', '값', '설명'],
     ['기간', month === 'all' ? '전체' : month, ''],
     ['주문 수', list.length, ''],
-    ['매출 합계', sum('합계금액'), '주문 금액 합계'],
-    ['입금 합계', paidSum, '입금완료로 표시된 금액'],
-    ['미입금', sum('합계금액') - paidSum, ''],
+    ['매출 합계(환불 전)', grossSum, '주문 금액 합계'],
+    ['환불 합계', -refundSum, '환불한 날 기준 · 지출이 아니라 매출에서 빼는 값(음수)'],
+    ['순매출', sum('합계금액'), '매출 − 환불'],
+    ['입금 합계', paidSum, '입금완료로 표시된 금액 (환불 전)'],
+    ['미입금', unpaidSum, ''],
     ['지출 합계', expSum, '필라멘트 구매 + 직접 입력한 지출'],
-    ['매출 − 지출', sum('합계금액') - expSum, '단순 차액 (택배비·원가 추정은 앱의 「원가 · 순이익」 화면)'],
+    ['순매출 − 지출', sum('합계금액') - expSum, '단순 차액 (택배비·원가 추정은 앱의 「원가 · 순이익」 화면)'],
     ['공급가액(참고)', sum('공급가액'), '합계 ÷ 1.1 — 면세·간이과세면 무시'],
     ['부가세(참고)', sum('부가세'), ''],
   ];
@@ -130,8 +166,8 @@ export async function exportLedgerXlsx(orders: Order[], products: Product[], mon
   wsSum['!cols'] = [{ wch: 16 }, { wch: 16 }, { wch: 54 }];
   XLSX.utils.book_append_sheet(wb, wsSum, '요약');
 
-  const byMonth = new Map<string, { 주문수: number; 매출: number; 입금: number; 지출: number }>();
-  const row = (k: string) => byMonth.get(k) || (byMonth.set(k, { 주문수: 0, 매출: 0, 입금: 0, 지출: 0 }), byMonth.get(k)!);
+  const byMonth = new Map<string, { 주문수: number; 매출: number; 입금: number; 환불: number; 지출: number }>();
+  const row = (k: string) => byMonth.get(k) || (byMonth.set(k, { 주문수: 0, 매출: 0, 입금: 0, 환불: 0, 지출: 0 }), byMonth.get(k)!);
   for (const o of list) {
     const r = row(monthKeyOf(o.createdAt || o.updatedAt));
     const a = orderAmount(o, products);
@@ -139,13 +175,14 @@ export async function exportLedgerXlsx(orders: Order[], products: Product[], mon
     r.매출 += a;
     if (o.paid) r.입금 += a;
   }
+  for (const { r } of refundLines) row(monthKeyOf(r.at)).환불 += r.amount;
   for (const l of lines) row(monthKeyOf(l.at)).지출 += l.amount;
-  const monthly = [...byMonth.entries()].sort().map(([k, r]) => ({ 월: k, 주문수: r.주문수, 매출: r.매출, 입금: r.입금, 미입금: r.매출 - r.입금, 지출: r.지출, '매출−지출': r.매출 - r.지출 }));
+  const monthly = [...byMonth.entries()].sort().map(([k, r]) => ({ 월: k, 주문수: r.주문수, 매출: r.매출, 환불: -r.환불, 순매출: r.매출 - r.환불, 입금: r.입금, 미입금: r.매출 - r.입금, 지출: r.지출, '순매출−지출': r.매출 - r.환불 - r.지출 }));
   const wsM = XLSX.utils.json_to_sheet(monthly);
-  wsM['!cols'] = [10, 8, 12, 12, 12, 12, 12].map((wch) => ({ wch }));
+  wsM['!cols'] = [10, 8, 12, 12, 12, 12, 12, 12, 12].map((wch) => ({ wch }));
   XLSX.utils.book_append_sheet(wb, wsM, '월별');
 
-  const wsS = XLSX.utils.json_to_sheet(sales);
+  const wsS = XLSX.utils.json_to_sheet(salesAll);
   wsS['!cols'] = [11, 11, 12, 14, 40, 11, 11, 10, 9, 7, 18].map((wch) => ({ wch }));
   XLSX.utils.sheet_add_aoa(wsS, [['합계', '', '', '', '', sum('합계금액'), sum('공급가액'), sum('부가세')]], { origin: -1 });
   XLSX.utils.book_append_sheet(wb, wsS, '매출장부');
