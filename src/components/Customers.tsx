@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { Copy, Crown, Phone, Search, Users } from 'lucide-react';
 import type { Order } from '../types';
 import type { Product } from '../products';
-import { formatWon, isUnpaid, orderAmount } from '../production';
+import { formatWon, isUnpaid } from '../production';
+import { orderNet } from '../refunds';
 import { avatarColor } from './Dashboard';
 import { EmptyArt } from '../ui/Art';
 
@@ -50,7 +51,7 @@ export function groupCustomers(orders: Order[], catalog: Product[]): Customer[] 
     const at = o.createdAt || o.updatedAt;
     const c = m.get(key) || { key, name: baseName(o.name), phone: ph ? fmtPhone(o.phone) : '', orders: [], total: 0, unpaid: 0, last: 0, first: at };
     c.orders.push(o);
-    const amt = orderAmount(o, catalog);
+    const amt = orderNet(o, catalog);
     c.total += amt;
     if (isUnpaid(o, catalog)) c.unpaid += amt;
     if (at >= c.last) {

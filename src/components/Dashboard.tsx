@@ -19,6 +19,7 @@ import type { Product } from '../products';
 import type { FilamentState } from '../filament';
 import { stockByType, swatchOf, thresholdOf, typeLabel } from '../filament';
 import { orderTimestamp } from '../period';
+import { orderNet } from '../refunds';
 import { formatDuration, formatWon, isUnpaid, orderAmount, orderItemProgress, parseOrderProducts, pendingMinutes, unitPrice } from '../production';
 import { isFullyShipped } from '../shipments';
 import { Bars, Ring, Sparkline } from '../ui/Charts';
@@ -52,6 +53,7 @@ export function avatarColor(name: string): string {
 
 export function statusPill(o: Order): { cls: string; label: string } {
   if (o.status === '완료') return { cls: 'done', label: '완료' };
+  if (o.status === '환불') return { cls: 'refund', label: '환불' };
   if (o.status === '제작중') return { cls: 'make', label: '제작중' };
   return { cls: 'wait', label: '대기' };
 }
@@ -106,7 +108,7 @@ export function Dashboard({ orders, products, filament, postPending, smsPending,
     const rank = new Map<string, { qty: number; amount: number }>();
     for (const o of orders) {
       const ts = orderTimestamp(o.createdAt, o.updatedAt);
-      const amt = orderAmount(o, products);
+      const amt = orderNet(o, products);
       const idx = Math.floor((startOfDay(ts) - days14[0]) / DAY);
       if (idx >= 0 && idx < 14) perDay[idx] += 1;
       if (ts >= today) todayCount += 1;

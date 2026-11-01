@@ -8,6 +8,8 @@ import { ProductBadges } from './ProductBadges';
 import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
 import { PayBadge } from './PayBadge';
 import { avatarColor, statusPill } from './Dashboard';
+import { matchBlacklist, type BlacklistEntry } from '../blacklist';
+import { refundTotal } from '../refunds';
 import { formatWon, orderAmount, orderItemProgress, orderPartProgress, productComponents, progressTotals } from '../production';
 
 interface Props {
@@ -26,6 +28,11 @@ interface Props {
   onCancelShip: (id: string, shipId: string) => void;
   /** 남은 품목을 전부 제작 완료로 체크 */
   onMakeAll?: (id: string) => void;
+  /** 환불 창 열기 */
+  onRefund?: (order: Order) => void;
+  /** 블랙리스트 등록 창 열기 (이 주문 정보로 미리 채움) */
+  onBlacklist?: (order: Order) => void;
+  blacklist?: BlacklistEntry[];
 }
 
 export function OrderCard({
@@ -42,7 +49,12 @@ export function OrderCard({
   onShip,
   onCancelShip,
   onMakeAll,
+  onRefund,
+  onBlacklist,
+  blacklist,
 }: Props) {
+  const blHit = blacklist?.length ? matchBlacklist(order.phone, order.address, blacklist) : null;
+  const refunded = refundTotal(order);
   const phoneOk = order.phone.replace(/\D/g, '').length >= 10;
   const active = order.status === '대기' || order.status === '제작중';
   const createdTs = order.createdAt || order.updatedAt;
@@ -93,6 +105,11 @@ export function OrderCard({
       </header>
 
       <div className="order-body">
+        {blHit ? (
+          <p className="bl-warn" role="alert">
+            🚫 블랙리스트와 {blHit.by === 'phone' ? '전화번호가' : '주소가'} 같아요{blHit.entry.reason ? ` · ${blHit.entry.reason}` : ''}{blHit.entry.name ? ` (${blHit.entry.name})` : ''}
+          </p>
+        ) : null}
         <div className="order-items"><ProductBadges items={order.items} products={products} prices={order.prices} /></div>
         {progress.length ? (
           <div className="make-list" aria-label="품목별 제작 체크">
@@ -271,6 +288,7 @@ export function OrderCard({
       </div>
 
       <div className="status-row" role="group" aria-label="상태 변경">
+        {order.status === '환불' ? <button type="button" className="status-btn status-환불 active" disabled>환불됨</button> : null}
         {STATUS_OPTIONS.map((s) => (
           <button
             key={s}
@@ -313,10 +331,25 @@ export function OrderCard({
         )}
       </div>
 
+      {refunded > 0 ? (
+        <p className="refund-line">
+          ↩ 환불 −{formatWon(refunded)} <small>{(order.refunds || []).map((r) => `${new Date(r.at).getMonth() + 1}/${new Date(r.at).getDate()}${r.memo ? ` ${r.memo}` : ''}`).join(' · ')}</small>
+        </p>
+      ) : null}
       <div className="meta-row">
         <button type="button" className="btn btn-ghost" onClick={() => onEdit(order)}>
           수정
         </button>
+        {onRefund ? (
+          <button type="button" className="btn btn-ghost" onClick={() => onRefund(order)}>
+            환불
+          </button>
+        ) : null}
+        {onBlacklist ? (
+          <button type="button" className="btn btn-ghost" onClick={() => onBlacklist(order)}>
+            🚫 블랙리스트
+          </button>
+        ) : null}
         <button
           type="button"
           className="btn btn-danger-ghost"
