@@ -1452,3 +1452,31 @@ html, body { overflow-x: clip; }
 .made-fold-btn { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px dashed rgba(148,163,184,.45); background: transparent; color: inherit; font-weight: 700; font-size: 14px; cursor: pointer; opacity: .85; }
 .made-fold-btn:hover { opacity: 1; }
 .made-fold .order-list { margin-top: 10px; }
+
+/* ── 환불 · 블랙리스트 ── */
+.pill.refund { background: rgba(167,139,250,0.16); color: #ddd6fe; border-color: rgba(167,139,250,0.4); }
+.status-btn.active.status-환불 { background: #3b0764; color: #e9d5ff; border-color: #a78bfa; }
+.pay-badge.refunded { color: #e9d5ff; border-color: #a78bfa; background: #2e1065; }
+.pay-refund { font-style: normal; color: #ddd6fe; }
+.refund-line { margin: 6px 0 0; font-size: 0.86rem; font-weight: 700; color: #c4b5fd; }
+.refund-line small { font-weight: 400; color: #a1a1aa; margin-left: 4px; }
+.bl-warn { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: rgba(239,68,68,0.16); border: 1px solid #ef4444; color: #fecaca; font-weight: 700; font-size: 0.88rem; }
+.refund-badge { background: rgba(167,139,250,0.2); color: #ddd6fe; }
+.refund-fields { display: grid; gap: 8px; margin: 10px 0; }
+.refund-fields label { display: grid; gap: 4px; font-size: 0.85rem; color: #9ca3af; }
+.refund-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.expense-to-refund { width: 100%; min-height: 36px; font-size: 0.82rem; margin-top: 2px; }
+.refund-pick { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow-y: auto; }
+.refund-pick-row { width: 100%; text-align: left; display: grid; gap: 2px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: inherit; }
+.refund-pick-row span { font-size: 0.8rem; color: #9ca3af; }
+.refund-pick-row small { font-size: 0.74rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.refund-pick-row.on { border-color: #a78bfa; background: rgba(167,139,250,0.14); }
+.bl-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.bl-row { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; padding: 10px; border-radius: 12px; border: 1px solid rgba(239,68,68,0.35); background: rgba(239,68,68,0.07); }
+.bl-main { display: grid; gap: 2px; min-width: 0; font-size: 0.9rem; }
+.bl-main span { word-break: break-all; }
+.bl-main small { color: #9ca3af; }
+.import-rows li.is-bl { background: rgba(239,68,68,0.12); border-radius: 8px; }
+.bl-badge { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #ef4444; color: #fff; font-size: 0.7rem; font-style: normal; font-weight: 700; }
+.form-bl-warn { margin: 6px 0; padding: 8px 10px; border-radius: 10px; background: rgba(239,68,68,0.16); border: 1px solid #ef4444; color: #fecaca; font-weight: 700; font-size: 0.86rem; }
+.cmd-pill.st-환불 { background: rgba(167,139,250,.18); color: #c4b5fd; }

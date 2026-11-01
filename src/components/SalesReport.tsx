@@ -33,6 +33,8 @@ interface Props {
   onTogglePaid: (id: string) => void;
   onMarkPaid: (ids: string[]) => void;
   onEdit: (o: Order) => void;
+  /** 지출 1건을 환불로 옮기기 (확인 창은 App 쪽) */
+  onExpenseToRefund?: (e: { id: string; at: number; amount: number; note: string }) => void;
   onClose: () => void;
 }
 
@@ -59,7 +61,7 @@ interface Draft {
   amount: string;
 }
 
-export function SalesReport({ filament, orders, products, period, onPeriod, onTogglePaid, onMarkPaid, onEdit, onClose }: Props) {
+export function SalesReport({ filament, orders, products, period, onPeriod, onTogglePaid, onMarkPaid, onEdit, onExpenseToRefund, onClose }: Props) {
   const data = useMemo(() => {
     const bounds = resolvePeriodBounds(period);
     const list = orders.filter((o) => {
@@ -69,7 +71,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
     });
     let total = 0;
     let paid = 0;
-    const months = new Map<string, { count: number; total: number; paid: number; ship: number; parcels: number }>();
+    const months = new Map<string, { count: number; total: number; paid: number; ship: number; parcels: number; refund: number }>();
     let shipFee = 0;
     let parcels = 0;
     const prod = new Map<string, { qty: number; amount: number }>();
@@ -81,9 +83,9 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
       const amt = orderAmount(o, products);
       total += amt;
       if (o.paid) paid += amt;
-      else if (amt > 0) unpaid.push({ order: o, amount: amt });
+      else if (amt > 0 && o.status !== '환불') unpaid.push({ order: o, amount: amt });
       const mk = monthKey(orderTimestamp(o.createdAt, o.updatedAt));
-      const m = months.get(mk) ?? { count: 0, total: 0, paid: 0, ship: 0, parcels: 0 };
+      const m = months.get(mk) ?? { count: 0, total: 0, paid: 0, ship: 0, parcels: 0, refund: 0 };
       m.count += 1;
       m.total += amt;
       if (o.paid) m.paid += amt;
@@ -107,7 +109,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
         const ts = sh.registeredAt || sh.requestedAt;
         if (bounds && (ts < bounds[0] || ts > bounds[1])) continue;
         const mk = monthKey(ts);
-        const m = months.get(mk) ?? { count: 0, total: 0, paid: 0, ship: 0, parcels: 0 };
+        const m = months.get(mk) ?? { count: 0, total: 0, paid: 0, ship: 0, parcels: 0, refund: 0 };
         m.parcels += 1;
         m.ship += sh.fee || 0;
         months.set(mk, m);
@@ -115,10 +117,25 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
         shipFee += sh.fee || 0;
       }
     }
+    // 환불: 환불한 날 기준 (기간 안에 한 환불 전부)
+    const refundRows: { order: Order; id: string; at: number; amount: number; memo?: string }[] = [];
+    let refundSum = 0;
+    for (const o of orders) {
+      for (const r of o.refunds || []) {
+        if (bounds && (r.at < bounds[0] || r.at > bounds[1])) continue;
+        refundRows.push({ order: o, id: r.id, at: r.at, amount: r.amount, memo: r.memo });
+        refundSum += r.amount;
+        const mk = monthKey(r.at);
+        const m = months.get(mk) ?? { count: 0, total: 0, paid: 0, ship: 0, parcels: 0, refund: 0 };
+        m.refund += r.amount;
+        months.set(mk, m);
+      }
+    }
+    refundRows.sort((a, b) => b.at - a.at);
     const monthRows = [...months.entries()].sort((a, b) => b[0].localeCompare(a[0]));
     const prodRows = [...prod.entries()].sort((a, b) => b[1].amount - a[1].amount || b[1].qty - a[1].qty);
     unpaid.sort((a, b) => a.order.createdAt - b.order.createdAt);
-    return { shipFee, parcels, serviceQty, serviceValue, count: list.length, total, paid, unpaidSum: total - paid, unpaid, monthRows, prodRows, list };
+    return { shipFee, parcels, serviceQty, serviceValue, count: list.length, total, paid, refundSum, refundRows, unpaidSum: unpaid.reduce((s, u) => s + u.amount, 0), unpaid, monthRows, prodRows, list };
   }, [orders, products, period]);
 
   const [exp, setExp] = useState<ExpenseState>(() => loadExpenses());
@@ -137,7 +154,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
     const lines = expenseLines(exp, filament ?? null).filter((l) => inBounds(l.at, bounds));
     return { lines, ...expenseTotals(lines) };
   }, [exp, filament, period]);
-  const profit = data.total - ex.total;
+  const profit = data.total - data.refundSum - ex.total;
 
   // ── 통장 잔고 맞춤 ──
   const paidAll = useMemo(() => orders.filter((o) => o.paid).reduce((t, o) => t + orderAmount(o, products), 0), [orders, products]);
@@ -150,8 +167,8 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
     if (balInput === null || !balInput.replace(/[^\d]/g, '') || !Number.isFinite(balActual)) return null;
     if (!lastBal || !est) return { first: true as const, actual: balActual };
     // 예상 잔고(입금 반영) 기준으로 차이를 계산 — 지난 잔고 그대로와 비교하지 않음
-    const { depositSum: income, spent, expected } = est;
-    return { first: false as const, actual: balActual, income, spent, expected, diff: balActual - expected };
+    const { depositSum: income, spent, expected, refundSum } = est;
+    return { first: false as const, actual: balActual, income, spent, refundSum, expected, diff: balActual - expected };
   }, [balInput, balActual, lastBal, est]);
   const saveBalance = () => {
     if (!balPreview) return;
@@ -252,8 +269,9 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
         <div className="report-card"><span>총 매출</span><strong>{formatWon(data.total)}</strong></div>
         <div className="report-card ok"><span>입금</span><strong>{formatWon(data.paid)}</strong></div>
         <div className="report-card bad"><span>미입금</span><strong>{formatWon(data.unpaidSum)}</strong></div>
+        {data.refundSum > 0 && <div className="report-card bad"><span>환불</span><strong>−{formatWon(data.refundSum)}</strong></div>}
         <div className="report-card bad"><span>지출</span><strong>{formatWon(ex.total)}</strong></div>
-        <div className={`report-card ${profit >= 0 ? 'ok' : 'bad'}`}><span>순이익 (매출 − 지출)</span><strong>{formatWon(profit)}</strong></div>
+        <div className={`report-card ${profit >= 0 ? 'ok' : 'bad'}`}><span>순이익 (매출{data.refundSum > 0 ? ' − 환불' : ''} − 지출)</span><strong>{formatWon(profit)}</strong></div>
       </div>
 
       <div className="balance-box">
@@ -277,7 +295,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
             ) : (
               <div className="balance-preview">
                 <div>기준 잔고 <b>{formatWon(lastBal!.amount)}</b></div>
-                <div>+ 그 뒤 입금 {est?.deposits.length ?? 0}건 <b>{formatWon(balPreview.income)}</b> − 그 뒤 지출 <b>{formatWon(balPreview.spent)}</b></div>
+                <div>+ 그 뒤 입금 {est?.deposits.length ?? 0}건 <b>{formatWon(balPreview.income)}</b>{balPreview.refundSum > 0 ? <> − 그 뒤 환불 <b>{formatWon(balPreview.refundSum)}</b></> : null} − 그 뒤 지출 <b>{formatWon(balPreview.spent)}</b></div>
                 <div>= 예상 잔고 <b>{formatWon(balPreview.expected)}</b> · 실제 <b>{formatWon(balPreview.actual)}</b></div>
                 <div className={balPreview.diff < 0 ? 'report-warn' : ''}>
                   {balPreview.diff === 0
@@ -337,9 +355,32 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
                 <span className="expense-note">{l.note || '-'}</span>
                 <b>{formatWon(l.amount)}</b>
               </button>
+              {onExpenseToRefund && !l.filamentEntryId && l.amount > 0 && l.category !== BALANCE_ADJ_CATEGORY && (
+                <button type="button" className="btn btn-ghost expense-to-refund" onClick={() => onExpenseToRefund({ id: l.id, at: l.at, amount: l.amount, note: l.note })}>
+                  ↩ 환불로 옮기기
+                </button>
+              )}
             </li>
           ))}
         </ul>
+      )}
+
+      {data.refundRows.length > 0 && (
+        <>
+          <h3 className="report-h">환불 {data.refundRows.length}건 · −{formatWon(data.refundSum)} <small className="hint">(지출 아님 · 매출에서 빠짐)</small></h3>
+          <ul className="expense-list refund-list">
+            {data.refundRows.map((r) => (
+              <li key={r.id}>
+                <button type="button" className="expense-row" onClick={() => onEdit(r.order)}>
+                  <span className="expense-date">{new Date(r.at).toLocaleDateString('ko-KR')}</span>
+                  <span className="expense-badge refund-badge">환불</span>
+                  <span className="expense-note">{r.order.name}{r.memo ? ` · ${r.memo}` : ''}</span>
+                  <b>−{formatWon(r.amount)}</b>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <h3 className="report-h">미입금 주문 {data.unpaid.length}건</h3>
@@ -383,8 +424,9 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
           <li key={k}>
             <div className="report-bar-label">
               <span>{k.replace('-', '년 ')}월 · {m.count}건</span>
-              <span>{formatWon(m.total)}{m.total - m.paid > 0 ? ` (미입금 ${formatWon(m.total - m.paid)})` : ''}</span>
+              <span>{formatWon(m.total - m.refund)}{m.total - m.paid > 0 ? ` (미입금 ${formatWon(m.total - m.paid)})` : ''}</span>
             </div>
+            {m.refund ? <div className="report-bar-label hint"><span>↩ 환불</span><span>−{formatWon(m.refund)} (총 {formatWon(m.total)})</span></div> : null}
             {m.parcels ? <div className="report-bar-label hint"><span>📦 발송 {m.parcels}건</span><span>택배비 {m.ship ? formatWon(m.ship) : '금액 미기록'}</span></div> : null}
             <div className="report-bar"><i style={{ width: `${(m.total / maxMonth) * 100}%` }} /><b style={{ width: `${(m.paid / maxMonth) * 100}%` }} /></div>
           </li>

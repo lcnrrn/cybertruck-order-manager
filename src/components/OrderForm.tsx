@@ -8,6 +8,7 @@ import {
   type Product,
 } from '../products';
 import { autoOrderAmount, formatWon, orderGrams } from '../production';
+import { matchBlacklist, type BlacklistEntry } from '../blacklist';
 import { orderSlots, swatchOf, typeLabel, type FilamentState } from '../filament';
 
 function toDateInput(ms?: number): string {
@@ -45,6 +46,7 @@ interface Props {
   onCancel: () => void;
   products: Product[];
   filament?: FilamentState;
+  blacklist?: BlacklistEntry[];
 }
 
 const empty: OrderFormValues = {
@@ -66,6 +68,7 @@ export function OrderForm({
   onCancel,
   products,
   filament,
+  blacklist,
 }: Props) {
   const [pick, setPick] = useState<Record<string, string>>({});
   const [values, setValues] = useState<OrderFormValues>(empty);
@@ -153,11 +156,16 @@ export function OrderForm({
     return [...ordered, ...extras];
   }
 
+  const blHit = blacklist?.length ? matchBlacklist(values.phone, values.address, blacklist) : null;
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!values.name.trim()) {
       window.alert('이름을 입력해 주세요.');
       return;
+    }
+    if (blHit && !(initial && matchBlacklist(initial.phone, initial.address, blacklist || []))) {
+      if (!window.confirm(`🚫 블랙리스트와 ${blHit.by === 'phone' ? '전화번호가' : '주소가'} 같아요. 그래도 저장할까요?`)) return;
     }
     const items = joinItems(orderedSelected(), itemsNote, qty);
     const amtRaw = amountText.replace(/[^\d]/g, '');
@@ -442,6 +450,11 @@ export function OrderForm({
           autoComplete="tel"
         />
       </label>
+      {blHit ? (
+        <p className="form-bl-warn" role="alert">
+          🚫 블랙리스트와 {blHit.by === 'phone' ? '전화번호가' : '주소가'} 같아요{blHit.entry.reason ? ` · ${blHit.entry.reason}` : ''}{blHit.entry.name ? ` (${blHit.entry.name})` : ''}
+        </p>
+      ) : null}
 
       <label className="field">
         <span>등기번호 (송장)</span>

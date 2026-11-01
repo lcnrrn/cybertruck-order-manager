@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Order } from '../types';
+import { matchBlacklist, type BlacklistEntry } from '../blacklist';
 import { applyNickname, parseNaverFormFile, parseReminderText } from '../parseImport';
 import {
   getProducts,
@@ -12,6 +13,7 @@ type Tab = 'naver' | 'reminders';
 interface Props {
   /** 이미 있는 주문 (중복 감지용) */
   existing: Order[];
+  blacklist?: BlacklistEntry[];
   onImport: (partials: Partial<Order>[]) => number;
   onClose: () => void;
 }
@@ -37,7 +39,7 @@ function alignItemsToCatalog(partials: Partial<Order>[]): Partial<Order>[] {
   });
 }
 
-export function ImportModal({ existing, onImport, onClose }: Props) {
+export function ImportModal({ existing, blacklist, onImport, onClose }: Props) {
   const [tab, setTab] = useState<Tab>('naver');
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
@@ -69,9 +71,12 @@ export function ImportModal({ existing, onImport, onClose }: Props) {
       return null;
     });
   }, [preview, existing]);
-  /** 직접 바꾼 체크 (없으면 중복은 기본 제외) */
+  /** 블랙리스트와 번호·주소가 같은 줄 */
+  const bl = useMemo(() => preview.map((p) => (blacklist?.length ? matchBlacklist(p.phone || '', p.address || '', blacklist) : null)), [preview, blacklist]);
+  const blCount = bl.filter(Boolean).length;
+  /** 직접 바꾼 체크 (없으면 중복·블랙리스트는 기본 제외) */
   const [override, setOverride] = useState<Record<number, boolean>>({});
-  const isOn = (i: number) => override[i] ?? !dups[i];
+  const isOn = (i: number) => override[i] ?? (!dups[i] && !bl[i]);
   const picked = preview.map((_, i) => i).filter(isOn);
   const dupCount = dups.filter(Boolean).length;
 
@@ -189,13 +194,15 @@ export function ImportModal({ existing, onImport, onClose }: Props) {
             미리보기 {preview.length}건 · 가져올 것 {picked.length}건
           </strong>
           {dupCount > 0 ? <p className="import-dup-note">⚠️ 이미 있는 주문과 같아 보이는 {dupCount}건은 기본으로 빼놨어요. 새 주문이 맞으면 체크해줘.</p> : null}
+          {blCount > 0 ? <p className="form-bl-warn" role="alert">🚫 블랙리스트와 번호·주소가 같은 {blCount}건은 기본으로 빼놨어요. 가져올 거면 직접 체크해줘.</p> : null}
           <ul className="import-rows">
             {preview.slice(0, 60).map((p, i) => (
-              <li key={i} className={dups[i] ? 'is-dup' : ''}>
+              <li key={i} className={`${dups[i] ? 'is-dup' : ''}${bl[i] ? ' is-bl' : ''}`}>
                 <label>
                   <input type="checkbox" checked={isOn(i)} onChange={(e) => setOverride((o) => ({ ...o, [i]: e.target.checked }))} />
                   <span className="import-row-text">
                     {p.name} · {p.items || '(내용없음)'} · {p.phone || '(번호없음)'}
+                    {bl[i] ? <em className="bl-badge">🚫 블랙리스트 · {bl[i]!.by === 'phone' ? '번호' : '주소'} 일치</em> : null}
                     {dups[i] ? (
                       <em className="dup-badge">
                         {dups[i]!.kind === 'existing' ? `이미 있음 · ${new Date(dups[i]!.at || 0).getMonth() + 1}/${new Date(dups[i]!.at || 0).getDate()} 접수` : '목록 안에서 중복'}
