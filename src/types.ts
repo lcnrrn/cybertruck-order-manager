@@ -27,7 +27,19 @@ export interface Shipment {
   updatedAt: number;
 }
 
-export type OrderStatus = '대기' | '제작중' | '완료';
+export type OrderStatus = '대기' | '제작중' | '완료' | '환불';
+
+/** 환불 1건 — 매출·순이익에서 빼고(지출 아님), 예상 통장 잔고에서 뺌 */
+export interface Refund {
+  id: string;
+  /** 환불한 날 (ms) */
+  at: number;
+  /** 환불 금액(원) */
+  amount: number;
+  memo?: string;
+  /** 이 환불로 주문이 '환불' 상태가 됐다면 그 전 상태 — 환불을 지우면 되돌림 */
+  prev?: OrderStatus;
+}
 
 export interface Order {
   id: string;
@@ -67,6 +79,8 @@ export interface Order {
   filamentGrams?: Record<string, number>;
   /** 우체국 전송(분할 발송) 목록 — 1차/2차 … 각각 송장 따로 */
   shipments?: Shipment[];
+  /** 환불 내역 (부분/전액) */
+  refunds?: Refund[];
   createdAt: number;
   updatedAt: number;
   /** (동기화 중에만) 시트 행의 L~R 열이 다른 주문 것으로 밀려 있어 믿을 수 없음 — 저장 안 됨 */
@@ -79,7 +93,7 @@ export interface Order {
 export type StatusFilter = '작업중' | '전체' | '미입금' | OrderStatus;
 
 export const STATUS_OPTIONS: OrderStatus[] = ['대기', '제작중', '완료'];
-export const FILTER_OPTIONS: StatusFilter[] = ['작업중', '대기', '제작중', '완료', '미입금', '전체'];
+export const FILTER_OPTIONS: StatusFilter[] = ['작업중', '대기', '제작중', '완료', '환불', '미입금', '전체'];
 
 export type PeriodPreset = 'this_month' | 'last_month' | 'all' | 'custom';
 

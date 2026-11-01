@@ -3,7 +3,7 @@ const META_KEY = 'cybertruck-settings-meta-v1';
 export const SETTINGS_CHANGED_EVENT = 'cybertruck-settings-changed';
 export const SETTINGS_APPLIED_EVENT = 'cybertruck-settings-applied';
 
-export type SettingKey = 'products' | 'sms' | 'filament' | 'production' | 'expenses' | 'deletedOrders' | 'epostRequest' | 'productImages' | 'shop';
+export type SettingKey = 'products' | 'sms' | 'filament' | 'production' | 'expenses' | 'deletedOrders' | 'epostRequest' | 'productImages' | 'shop' | 'blacklist';
 
 export const SETTING_LS_KEYS: Record<SettingKey, string> = {
   products: 'cybertruck-products-v1',
@@ -17,6 +17,8 @@ export const SETTING_LS_KEYS: Record<SettingKey, string> = {
   productImages: 'cybertruck-product-images-v1',
   /** 가게 설정 {bankName, bankNumber, bankHolder, costPerGram …} — 설정 탭 'shop' 행 */
   shop: 'cybertruck-shop-v1',
+  /** 블랙리스트 {id: {name?, phone, address, reason?, at}} — 설정 탭 'blacklist' 행 (항목 단위 병합) */
+  blacklist: 'cybertruck-blacklist-v1',
 };
 
 export function getSettingsMeta(): Partial<Record<SettingKey, number>> {
@@ -57,7 +59,7 @@ export function markSettingChanged(key: SettingKey): void {
  */
 export type ItemStamp = { u: number; d?: true };
 export type ItemStamps = Partial<Record<SettingKey, Record<string, ItemStamp>>>;
-export const ITEM_KEYS: SettingKey[] = ['products', 'sms', 'production', 'productImages', 'shop'];
+export const ITEM_KEYS: SettingKey[] = ['products', 'sms', 'production', 'productImages', 'shop', 'blacklist'];
 const STAMPS_KEY = 'cybertruck-item-stamps-v1';
 const SNAP_KEY = 'cybertruck-settings-snap-v1';
 
