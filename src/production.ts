@@ -142,6 +142,20 @@ export function progressTotals(list: OrderItemProgress[]): { done: number; total
   return list.reduce((a, x) => ({ done: a.done + x.done, total: a.total + x.qty }), { done: 0, total: 0 });
 }
 
+/** 이 주문에서 그 제품이 아직 다 안 만들어졌는지 (구성품 세트는 구성품 하나라도 모자라면 true) */
+export function productUnmade(order: Pick<Order, 'items' | 'doneMap'>, product: string, catalog: Product[]): boolean {
+  const prod = catalog.find((c) => c.name === product);
+  if (product === '기타' && !prod) return true;
+  const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
+  for (const it of r.products) {
+    if (it.name !== product) continue;
+    if (prod && productComponents(prod).length) {
+      if (orderPartProgress(order, prod, it.qty).some((x) => x.done < x.need)) return true;
+    } else if (remainingQty(order, product, it.qty) > 0) return true;
+  }
+  return false;
+}
+
 /** 남은(아직 안 만든) 수량 */
 export function remainingQty(order: Pick<Order, 'doneMap'>, key: string, qty: number): number {
   return Math.max(0, qty - Math.max(0, Math.floor(order.doneMap?.[key] || 0)));

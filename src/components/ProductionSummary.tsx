@@ -109,7 +109,7 @@ export function ProductionSummary({ orders, products, filament, selected, onSele
       )}
       {selected && (
         <div className="prod-summary-filter">
-          <span>‘{selected}’ 포함 주문만 보는 중</span>
+          <span>{embedded ? `‘${selected}’ 안 만든 사람만 보는 중` : `‘${selected}’ 포함 주문만 보는 중`}</span>
           <button type="button" onClick={() => onSelect(null)}>해제 ✕</button>
         </div>
       )}

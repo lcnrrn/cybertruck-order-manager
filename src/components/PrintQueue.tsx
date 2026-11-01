@@ -23,6 +23,9 @@ interface Props {
   /** 세트 제품 구성품 개수 지정 */
   onPartDone?: (orderId: string, product: string, part: string, count: number) => void;
   onOpenProducts: () => void;
+  /** 카드를 누르면 그 제품의 '안 만든 사람' 목록 보기 */
+  selected?: string | null;
+  onSelect?: (name: string) => void;
 }
 
 interface Unit { order: Order; name: string; minutes: number }
@@ -36,7 +39,7 @@ function byQueue(a: Order, b: Order): number {
   return Number(!!b.priority) - Number(!!a.priority) || (a.createdAt || a.updatedAt) - (b.createdAt || b.updatedAt);
 }
 
-export function PrintQueue({ orders, products, onDone, onPartDone, onOpenProducts }: Props) {
+export function PrintQueue({ orders, products, onDone, onPartDone, onOpenProducts, selected, onSelect }: Props) {
   const images = useProductImages();
   const [showPlan, setShowPlan] = useState(true);
   const settings = loadProductionSettings();
@@ -147,9 +150,17 @@ export function PrintQueue({ orders, products, onDone, onPartDone, onOpenProduct
         {loads.map((l) => {
           const nx = nextFor.get(l.name);
           return (
-            <li key={l.name} className={`pq-row${l.suspicious ? ' bad' : ''}`}>
+            <li key={l.name} className={`pq-row${l.suspicious ? ' bad' : ''}${selected === l.name ? ' is-selected' : ''}`}>
               {thumb(l)}
-              <div className="pq-main">
+              <div
+                className={`pq-main${onSelect ? ' is-tappable' : ''}`}
+                role={onSelect ? 'button' : undefined}
+                tabIndex={onSelect ? 0 : undefined}
+                aria-pressed={onSelect ? selected === l.name : undefined}
+                title={onSelect ? '누르면 안 만든 사람 목록만 보여요' : undefined}
+                onClick={onSelect ? () => onSelect(l.name) : undefined}
+                onKeyDown={onSelect ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(l.name); } } : undefined}
+              >
                 <div className="pq-name"><b>{l.name}</b><span className="pq-qty">×{l.qty}</span></div>
                 <div className="pq-meta">
                   <span><Timer size={12} />{l.minutes ? formatDuration(l.minutes) : '시간 미입력'}</span>
