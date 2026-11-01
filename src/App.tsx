@@ -23,7 +23,7 @@ import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
 import { ProductionSummary } from './components/ProductionSummary';
 import { applyPartCount, orderItemProgress, parseOrderProducts, PART_SEP, productComponents } from './production';
-import { buildProductionSummary, formatDuration, isUnpaid, orderHasProduct, orderAmount, pendingMinutes, formatWon } from './production';
+import { buildProductionSummary, formatDuration, isUnpaid, orderHasProduct, orderAmount, pendingMinutes, formatWon, productUnmade } from './production';
 import { SalesReport } from './components/SalesReport';
 import { FilamentInventory } from './components/FilamentInventory';
 import { loadFilament, saveFilament, type FilamentState } from './filament';
@@ -578,6 +578,16 @@ export default function App() {
         .sort((a, b) => Number(!!b.priority) - Number(!!a.priority) || (a.createdAt || a.updatedAt) - (b.createdAt || b.updatedAt)),
     [orders, productFilter, products, postOnly],
   );
+  /** 제품을 눌렀을 때: 아직 안 만든 사람만 위에, 다 만든 사람은 접어서 아래에 */
+  const [showMade, setShowMade] = useState(false);
+  useEffect(() => setShowMade(false), [productFilter]);
+  const { todoOrders, madeOrders } = useMemo(() => {
+    if (!productFilter) return { todoOrders: workOrders, madeOrders: [] as Order[] };
+    const todo: Order[] = [];
+    const made: Order[] = [];
+    for (const o of workOrders) (productUnmade(o, productFilter, products) ? todo : made).push(o);
+    return { todoOrders: todo, madeOrders: made };
+  }, [workOrders, productFilter, products]);
   const tabInfo = TABS.find((t) => t.id === tab) ?? TABS[0];
   const stats: { label: string; value: string; tone?: string }[] =
     tab === 'orders'
@@ -774,9 +784,9 @@ export default function App() {
                   embedded
                 />
               </section>
-              <PrintQueue orders={orders} products={products} onDone={(id, key, count) => setItemDone(id, key, count)} onPartDone={setPartDone} onOpenProducts={() => setSheet('products')} />
-              <h2 className="section-title">
-                <Hammer size={17} /> 제작 체크 <span className="section-sub">{workOrders.length}건{productFilter ? ` · ‘${productFilter}’ 포함` : ''} · 접수 오래된 순</span>
+              <PrintQueue orders={orders} products={products} selected={productFilter} onSelect={(n) => { setProductFilter((cur) => (cur === n ? null : n)); if (productFilter !== n) window.setTimeout(() => document.getElementById('make-check')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }} onDone={(id, key, count) => setItemDone(id, key, count)} onPartDone={setPartDone} onOpenProducts={() => setSheet('products')} />
+              <h2 className="section-title" id="make-check">
+                <Hammer size={17} /> 제작 체크 <span className="section-sub">{todoOrders.length}건{productFilter ? ` · ‘${productFilter}’ 안 만든 주문` : ''} · 접수 오래된 순</span>
               </h2>
               {postPending > 0 ? (
                 <button type="button" className="btn btn-secondary btn-wide" onClick={() => setSheet('epost')}><Mailbox size={16} />우체국 접수하러 가기 ({postPending}건)</button>
@@ -791,7 +801,21 @@ export default function App() {
                   📮 전송 대기 {postPending}건{postOnly ? ' · 전체 보기' : ''}
                 </button>
               ) : null}
-              <div className="order-list">{renderCards(workOrders)}</div>
+              <div className="order-list">
+                {productFilter && todoOrders.length === 0 ? (
+                  <div className="empty"><p className="empty-title">‘{productFilter}’ 다 만들었어요 🎉</p><p className="empty-hint">{madeOrders.length ? '아래 「완료」에서 확인할 수 있어요.' : ''}</p></div>
+                ) : (
+                  renderCards(todoOrders)
+                )}
+              </div>
+              {productFilter && madeOrders.length > 0 ? (
+                <div className="made-fold">
+                  <button type="button" className="made-fold-btn" aria-expanded={showMade} onClick={() => setShowMade((v) => !v)}>
+                    {showMade ? '▲' : '▼'} 완료 {madeOrders.length}명 {showMade ? '접기' : '보기'}
+                  </button>
+                  {showMade ? <div className="order-list">{renderCards(madeOrders)}</div> : null}
+                </div>
+              ) : null}
             </>
           )}
         </main>
