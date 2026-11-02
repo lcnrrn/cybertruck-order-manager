@@ -3,6 +3,8 @@ import type { FilamentState, FilamentType } from './filament';
 
 export const EXPENSES_LS_KEY = 'cybertruck-expenses-v1';
 export const FILAMENT_CATEGORY = '필라멘트';
+/** 경동화물 선불 택배비 지출 분류 */
+export const COURIER_FEE_CATEGORY = '택배비';
 export const DEFAULT_EXPENSE_CATEGORIES = ['부속품', '기타'];
 
 export interface Expense {

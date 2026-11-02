@@ -10,7 +10,7 @@ import { getProducts, setProducts, type Product } from './products';
 import { useFilteredOrders, useOrders } from './hooks/useOrders';
 import { useGoogleSync } from './hooks/useGoogleSync';
 import { OrderCard } from './components/OrderCard';
-import { addShipment, attachTracking, cancelShipment, isFullyDelivered, isFullyShipped, pendingShipmentCount, setShipmentSms, shippedQty, smsPendingShipments } from './shipments';
+import { addCourierShipment, addShipment, attachTracking, cancelCourierShipment, cancelShipment, isFullyDelivered, isFullyShipped, pendingShipmentCount, setShipmentSms, shippedQty, smsPendingShipments } from './shipments';
 import { ShipSmsPanel } from './components/ShipSmsPanel';
 import { OrderForm, type OrderFormValues } from './components/OrderForm';
 import { ImportModal } from './components/ImportModal';
@@ -32,7 +32,7 @@ import { ExpenseToRefundPanel, RefundPanel, type RefundInput } from './component
 import { BlacklistPanel } from './components/BlacklistPanel';
 import { useBlacklist } from './blacklist';
 import { applyRefund, removeRefund } from './refunds';
-import { loadExpenses, saveExpenses } from './expenses';
+import { COURIER_FEE_CATEGORY, loadExpenses, newExpenseId, saveExpenses } from './expenses';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
@@ -565,6 +565,46 @@ export default function App() {
     onCancelShip: (id: string, shipId: string) => {
       transformOrder(id, (o) => cancelShipment(o, shipId));
       showToast('전송 요청을 취소했어요');
+    },
+    /** 경동화물: 우체국 접수 요청 없이 바로 접수 완료·송장. 선불 택배비는 지출(택배비)로 기록 */
+    onCourierShip: (id: string, items: Record<string, number>, trackingNumber: string, fee: number) => {
+      if (blocked()) return;
+      const names = products.map((p) => p.name);
+      const cur = orders.find((x) => x.id === id);
+      if (!cur) return;
+      const now = Date.now();
+      const feeWon = Math.max(0, Math.floor(fee || 0));
+      const expId = feeWon > 0 ? newExpenseId() : undefined;
+      const next = addCourierShipment(cur, items, orderItemProgress(cur, names), trackingNumber, { fee: feeWon, feeExpenseId: expId }, now);
+      if (!next) {
+        showToast('등록할 수 없어요 · 송장번호가 비었거나 이미 등록된 송장이에요');
+        return;
+      }
+      if (expId) {
+        const st = loadExpenses();
+        saveExpenses({
+          ...st,
+          categories: st.categories.includes(COURIER_FEE_CATEGORY) ? st.categories : [...st.categories, COURIER_FEE_CATEGORY],
+          items: [...st.items, { id: expId, at: now, category: COURIER_FEE_CATEGORY, note: `경동화물 ${cur.name}`, amount: feeWon, updatedAt: now }],
+        });
+        try { window.dispatchEvent(new CustomEvent(SETTINGS_APPLIED_EVENT)); } catch { /* ignore */ }
+      }
+      transformOrder(id, () => next);
+      showToast(`🚛 경동화물 송장 등록됨${feeWon ? ` · 택배비 ${feeWon.toLocaleString('ko-KR')}원 지출 기록` : ''}`);
+    },
+    onCancelCourier: (id: string, shipId: string) => {
+      if (blocked()) return;
+      const cur = orders.find((x) => x.id === id);
+      const sh = cur?.shipments?.find((x) => x.id === shipId);
+      if (!cur || !sh) return;
+      if (sh.feeExpenseId) {
+        const st = loadExpenses();
+        const now = Date.now();
+        saveExpenses({ ...st, items: st.items.map((x) => (x.id === sh.feeExpenseId ? { ...x, deleted: true, updatedAt: now } : x)) });
+        try { window.dispatchEvent(new CustomEvent(SETTINGS_APPLIED_EVENT)); } catch { /* ignore */ }
+      }
+      transformOrder(id, (o) => cancelCourierShipment(o, shipId));
+      showToast('경동화물 발송 기록을 지웠어요');
     },
   };
   /** 환불 기록 (부분/전액). 전액이면 상태 '환불' */

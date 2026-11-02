@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { activeShipments, shipmentLabel, shippableItems, shippedQty } from '../shipments';
+import { activeShipments, shipmentLabel, shippableItems, shippedQty, smsTrackingOf } from '../shipments';
+import { carrierOf, carrierName, trackUrl } from '../carrier';
 import { formatOrderDate, relativeLabel } from '../dates';
 import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
@@ -26,6 +27,10 @@ interface Props {
   onPartDone?: (id: string, product: string, part: string, count: number) => void;
   onShip: (id: string, items: Record<string, number>, mode?: 'counter' | 'visit') => void;
   onCancelShip: (id: string, shipId: string) => void;
+  /** 경동화물: 제작 체크한 품목 + 송장번호(수동) + 선불 택배비(원, 선택 — 지출로 기록) → 바로 접수 완료·송장 처리 */
+  onCourierShip?: (id: string, items: Record<string, number>, trackingNumber: string, fee: number) => void;
+  /** 잘못 입력한 경동화물 발송건 취소 (택배비 지출도 같이 지움) */
+  onCancelCourier?: (id: string, shipId: string) => void;
   /** 남은 품목을 전부 제작 완료로 체크 */
   onMakeAll?: (id: string) => void;
   /** 환불 창 열기 */
@@ -48,6 +53,8 @@ export function OrderCard({
   onPartDone,
   onShip,
   onCancelShip,
+  onCourierShip,
+  onCancelCourier,
   onMakeAll,
   onRefund,
   onBlacklist,
@@ -65,7 +72,10 @@ export function OrderCard({
   const avail = shippableItems(order, progress);
   const availKeys = Object.keys(avail);
   const [pick, setPick] = useState<Record<string, number> | null>(null);
-  const [pickMode, setPickMode] = useState<'counter' | 'visit'>('counter');
+  const [pickMode, setPickMode] = useState<'counter' | 'visit' | 'courier'>('counter');
+  const [courierTn, setCourierTn] = useState('');
+  const [courierFee, setCourierFee] = useState('');
+  const smsTrack = smsTrackingOf(order);
   const pickTotal = pick ? Object.values(pick).reduce((a, b) => a + b, 0) : 0;
   const shipped = shippedQty(order);
   const unshippedLeft = progress.some((it) => it.qty - (shipped[it.key] || 0) > 0);
@@ -180,7 +190,7 @@ export function OrderCard({
             })}
             {pick ? (
               <div className="ship-picker" role="group" aria-label="우체국 전송 품목 선택">
-                <div className="ship-picker-head">{pickMode === 'visit' ? '🚚 방문' : '🏤 창구'} 접수 · {nextNo}차 품목</div>
+                <div className="ship-picker-head">{pickMode === 'courier' ? '🚛 경동화물' : pickMode === 'visit' ? '🚚 방문 접수' : '🏤 창구 접수'} · {nextNo}차 품목</div>
                 {availKeys.map((k) => (
                   <div key={k} className="ship-pick-row">
                     <span className="ship-pick-name">{k}</span>
@@ -193,12 +203,32 @@ export function OrderCard({
                     </span>
                   </div>
                 ))}
+                {pickMode === 'courier' ? (
+                  <div className="courier-fields">
+                    <label className="field">
+                      <span>경동화물 송장번호</span>
+                      <input value={courierTn} onChange={(e) => setCourierTn(e.target.value)} inputMode="numeric" autoComplete="off" placeholder="숫자만 (예: 3202113441986)" aria-label="경동화물 송장번호" />
+                    </label>
+                    <label className="field">
+                      <span>택배비 (선불, 원) · 비우면 기록 안 함</span>
+                      <input value={courierFee} onChange={(e) => setCourierFee(e.target.value.replace(/[^\d]/g, ''))} inputMode="numeric" autoComplete="off" placeholder="예: 35000" aria-label="경동화물 택배비" />
+                    </label>
+                    <p className="hint">우체국 접수 요청은 안 만들어요. 등록하면 바로 「접수 완료 · 송장」으로 처리되고, 택배비는 지출(택배비)로 기록돼요.</p>
+                  </div>
+                ) : null}
                 <div className="ship-picker-actions">
                   <button type="button" className="btn btn-secondary" onClick={() => setPick(null)}>취소</button>
-                  <button type="button" className={`btn ship-btn${pickMode === 'visit' ? ' visit' : ''}`} disabled={pickTotal === 0}
-                    onClick={() => { onShip(order.id, pick, pickMode); setPick(null); }}>
-                    {pickTotal}개 전송 요청
-                  </button>
+                  {pickMode === 'courier' ? (
+                    <button type="button" className="btn ship-btn courier" disabled={pickTotal === 0 || !courierTn.replace(/\D/g, '')}
+                      onClick={() => { onCourierShip?.(order.id, pick, courierTn, Number(courierFee) || 0); setPick(null); setCourierTn(''); setCourierFee(''); }}>
+                      🚛 {pickTotal}개 경동화물 발송 등록
+                    </button>
+                  ) : (
+                    <button type="button" className={`btn ship-btn${pickMode === 'visit' ? ' visit' : ''}`} disabled={pickTotal === 0}
+                      onClick={() => { onShip(order.id, pick, pickMode); setPick(null); }}>
+                      {pickTotal}개 전송 요청
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -214,6 +244,16 @@ export function OrderCard({
                     {m === 'visit' ? '🚚 방문 접수' : '🏤 창구 접수'}{availKeys.length ? ` (${Object.values(avail).reduce((x, y) => x + y, 0)}개)` : ''}
                   </button>
                 ))}
+                {onCourierShip ? (
+                  <button
+                    type="button"
+                    className="btn ship-btn courier"
+                    disabled={availKeys.length === 0}
+                    onClick={() => { setPickMode('courier'); setPick({ ...avail }); }}
+                  >
+                    🚛 경동화물 (송장 직접 입력)
+                  </button>
+                ) : null}
               </div>
             )}
             {!pick && availKeys.length === 0 && unshippedLeft ? (
@@ -229,11 +269,15 @@ export function OrderCard({
             {ships.map((sh) => (
               <li key={sh.id} className={`ship-line ${sh.postStatus}`}>
                 <span className="ship-no">{sh.no}차</span>
-                <span className={`mode-badge ${sh.mode === 'visit' ? 'visit' : 'counter'}`}>{sh.mode === 'visit' ? '방문' : '창구'}</span>
+                {sh.carrier === 'kyungdong'
+                  ? <span className="mode-badge courier">경동화물</span>
+                  : <span className={`mode-badge ${sh.mode === 'visit' ? 'visit' : 'counter'}`}>{sh.mode === 'visit' ? '방문' : '창구'}</span>}
                 <span className="ship-items">{shipmentLabel(sh)}</span>
                 <span className="ship-state">
                   {sh.postStatus === 'registered'
-                    ? `✅ 접수 완료${sh.trackingNumber ? ` · 송장 ${sh.trackingNumber}` : sh.receiptNo ? ` · ${sh.receiptNo}` : ''}`
+                    ? (sh.carrier === 'kyungdong'
+                      ? `✅ 경동화물${sh.trackingNumber ? ` · 송장 ${sh.trackingNumber}` : ''}${sh.fee ? ` · 택배비 ${formatWon(sh.fee)}` : ''}`
+                      : `✅ 접수 완료${sh.trackingNumber ? ` · 송장 ${sh.trackingNumber}` : sh.receiptNo ? ` · ${sh.receiptNo}` : ''}`)
                     : '📮 전송 대기'}
                   {sh.delivered ? <span className="ship-flag">🏠 배달완료{sh.deliveredAt ? ` ${new Date(sh.deliveredAt).getMonth() + 1}/${new Date(sh.deliveredAt).getDate()}` : ''}</span> : null}
                   {sh.trackingNumber ? <span className="ship-flag">{sh.smsSent ? '💬 문자 보냄' : '💬 문자 전'}</span> : null}
@@ -241,6 +285,10 @@ export function OrderCard({
                 {sh.postStatus === 'requested' ? (
                   <button type="button" className="btn-icon ship-cancel" aria-label={`${sh.no}차 전송 취소`}
                     onClick={() => { if (window.confirm(`${sh.no}차 우체국 전송 요청을 취소할까?`)) onCancelShip(order.id, sh.id); }}>✕</button>
+                ) : null}
+                {sh.carrier === 'kyungdong' && sh.postStatus === 'registered' && onCancelCourier ? (
+                  <button type="button" className="btn-icon ship-cancel" aria-label={`${sh.no}차 경동화물 발송 취소`}
+                    onClick={() => { if (window.confirm(`${sh.no}차 경동화물 발송 기록을 지울까? (택배비 지출도 같이 지워져)`)) onCancelCourier(order.id, sh.id); }}>✕</button>
                 ) : null}
               </li>
             ))}
@@ -254,6 +302,12 @@ export function OrderCard({
             송장 <code>{order.trackingNumber}</code>
           </p>
         ) : null}
+        {ships.filter((x) => x.carrier === 'kyungdong' && x.trackingNumber).map((x) => (
+          <p key={x.id} className="order-tracking" title="경동화물 송장">
+            {carrierName(carrierOf(x))} 송장 <code>{x.trackingNumber}</code>{' '}
+            <a href={trackUrl('kyungdong', x.trackingNumber!)} target="_blank" rel="noreferrer">배송조회 ›</a>
+          </p>
+        ))}
       </div>
 
       <div className="copy-row" role="group" aria-label="복사">
@@ -321,7 +375,7 @@ export function OrderCard({
             </a>
             <a
               className="btn btn-ghost"
-              href={buildSmsLink(order.phone, buildShippingSmsBody(order.trackingNumber))}
+              href={buildSmsLink(order.phone, buildShippingSmsBody(smsTrack.trackingNumber, smsTrack.carrier))}
             >
               발송안내
             </a>

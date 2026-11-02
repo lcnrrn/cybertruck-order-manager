@@ -44,7 +44,7 @@ export function orderProfit(o: Order, catalog: Product[], cpg: number, shipFee: 
   const material = grams * cpg;
   const ships = (o.shipments || []).filter((s) => s.postStatus !== 'cancelled');
   let ship = 0;
-  if (ships.length) ship = ships.reduce((s, x) => s + (typeof x.fee === 'number' && x.fee > 0 ? x.fee : shipFee), 0);
+  if (ships.length) ship = ships.reduce((s, x) => s + (typeof x.fee === 'number' && x.fee > 0 ? x.fee : x.carrier === 'kyungdong' ? 0 : shipFee), 0);
   else if (o.trackingNumber || /택배/.test(o.items || '')) ship = shipFee;
   return { revenue, grams, material, ship, net: revenue - material - ship };
 }
