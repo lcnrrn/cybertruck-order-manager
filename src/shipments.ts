@@ -35,6 +35,8 @@ export function parseShipments(raw: unknown): Shipment[] | undefined {
     const ra = n(s.registeredAt); if (ra) sh.registeredAt = ra;
     const rn = str(s.receiptNo); if (rn) sh.receiptNo = rn;
     const tn = str(s.trackingNumber); if (tn) sh.trackingNumber = tn;
+    if (s.carrier === 'kyungdong') sh.carrier = 'kyungdong';
+    const fe = str(s.feeExpenseId); if (fe) sh.feeExpenseId = fe;
     if (s.prepaid === true) sh.prepaid = true;
     const fee = n(s.fee); if (fee !== undefined && fee >= 0) sh.fee = fee;
     if (s.smsSent === true) { sh.smsSent = true; const t = n(s.smsSentAt); if (t) sh.smsSentAt = t; }
@@ -47,13 +49,17 @@ export function parseShipments(raw: unknown): Shipment[] | undefined {
 /** 한 발송건 병합: registered 는 절대 되돌리지 않음, 그 외엔 updatedAt 최신. 송장/접수번호는 있는 쪽 보존 */
 function mergeOne(a: Shipment, b: Shipment): Shipment {
   let win: Shipment;
-  if (RANK[a.postStatus] === 2 || RANK[b.postStatus] === 2) {
+  // 경동화물(수동 송장)은 봇이 안 건드리므로 단순히 더 최근 수정이 이김 — 잘못 넣은 건 취소·송장 수정이 다른 기기에서 되살아나지 않게
+  if (a.carrier === 'kyungdong' || b.carrier === 'kyungdong') win = a.updatedAt >= b.updatedAt ? a : b;
+  else if (RANK[a.postStatus] === 2 || RANK[b.postStatus] === 2) {
     win = a.postStatus === 'registered' && (b.postStatus !== 'registered' || a.updatedAt >= b.updatedAt) ? a : b;
   } else win = a.updatedAt >= b.updatedAt ? a : b;
   const lose = win === a ? b : a;
   const out = { ...win };
   if (!out.trackingNumber && lose.trackingNumber) out.trackingNumber = lose.trackingNumber;
   if (!out.receiptNo && lose.receiptNo) out.receiptNo = lose.receiptNo;
+  if (!out.carrier && lose.carrier) out.carrier = lose.carrier;
+  if (!out.feeExpenseId && lose.feeExpenseId) out.feeExpenseId = lose.feeExpenseId;
   if (!out.registeredAt && lose.registeredAt && out.postStatus === 'registered') out.registeredAt = lose.registeredAt;
   if (out.fee === undefined && lose.fee !== undefined) out.fee = lose.fee;
   if (!out.prepaid && lose.prepaid) out.prepaid = true;
@@ -135,6 +141,17 @@ export function cancelShipment(o: Order, shipId: string, now = Date.now()): Orde
   };
 }
 
+/** 경동화물 발송건 취소(잘못 입력) — 기록은 cancelled 로 남겨 다른 기기가 되살리지 않게 */
+export function cancelCourierShipment(o: Order, shipId: string, now = Date.now()): Order | null {
+  const s = o.shipments?.find((x) => x.id === shipId);
+  if (!s || s.carrier !== 'kyungdong' || s.postStatus === 'cancelled') return null;
+  return {
+    ...o,
+    shipments: o.shipments!.map((x) => (x.id === shipId ? { ...x, postStatus: 'cancelled' as const, updatedAt: now } : x)),
+    updatedAt: now,
+  };
+}
+
 /** 송장 붙이기: 송장이 없는 가장 오래된 발송건(접수 완료 우선, 다음 전송 대기)에 붙이고 접수 완료 처리 */
 export function attachTracking(o: Order, trackingNumber: string, now = Date.now()): Order {
   const tn = trackingNumber.replace(/\s/g, '');
@@ -153,6 +170,47 @@ export function attachTracking(o: Order, trackingNumber: string, now = Date.now(
     ),
     updatedAt: now,
   };
+}
+
+/**
+ * 경동화물(수동 송장) 발송건 만들기 — 접수 대기 없이 바로 '접수 완료 + 송장'.
+ * 우체국 접수 요청(requested)·우체국 자동 조회 대상이 아니라 carrier 로 표시. 선불 택배비는 fee(원)로 기록.
+ * 만든(제작 체크한) 수량까지만 담김. 담을 게 없거나 송장이 비면 null.
+ */
+export function addCourierShipment(
+  o: Order,
+  want: Record<string, number>,
+  progress: { key: string; done: number }[],
+  trackingNumber: string,
+  opts: { fee?: number; feeExpenseId?: string } = {},
+  now = Date.now(),
+): Order | null {
+  const tn = trackingNumber.replace(/\s|-/g, '');
+  if (!tn) return null;
+  if (activeShipments(o).some((s) => s.trackingNumber === tn)) return null;
+  const avail = shippableItems(o, progress);
+  const items: Record<string, number> = {};
+  for (const [k, q] of Object.entries(want)) {
+    const n = Math.min(Math.floor(q), avail[k] || 0);
+    if (n > 0) items[k] = n;
+  }
+  if (!Object.keys(items).length) return null;
+  const no = activeShipments(o).reduce((m, s) => Math.max(m, s.no), 0) + 1;
+  const sh: Shipment = {
+    id: newId(), no, items, postStatus: 'registered', carrier: 'kyungdong', prepaid: true,
+    requestedAt: now, registeredAt: now, trackingNumber: tn, updatedAt: now,
+  };
+  if (typeof opts.fee === 'number' && opts.fee > 0) sh.fee = Math.floor(opts.fee);
+  if (opts.feeExpenseId) sh.feeExpenseId = opts.feeExpenseId;
+  return { ...o, shipments: [...(o.shipments || []), sh], updatedAt: now };
+}
+
+/** 발송안내 문자에 쓸 (송장, 택배사): 문자 안 보낸 송장 → 마지막 송장 순. 발송건 송장이 없으면 주문 대표 송장(우체국) */
+export function smsTrackingOf(o: Pick<Order, 'shipments' | 'trackingNumber'>): { trackingNumber?: string; carrier: 'epost' | 'kyungdong' } {
+  const withTn = activeShipments(o).filter((s) => s.postStatus === 'registered' && s.trackingNumber);
+  const pick = withTn.find((s) => !s.smsSent) || withTn[withTn.length - 1];
+  if (pick) return { trackingNumber: pick.trackingNumber, carrier: pick.carrier === 'kyungdong' ? 'kyungdong' : 'epost' };
+  return { trackingNumber: o.trackingNumber, carrier: 'epost' };
 }
 
 /** 모든 품목이 송장 있는 접수 완료 발송건에 들어갔는지 */

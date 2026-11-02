@@ -14,6 +14,10 @@ export interface Shipment {
   registeredAt?: number;
   receiptNo?: string;
   trackingNumber?: string;
+  /** 택배사 — 없으면 우체국. 'kyungdong' 이면 수동 송장(우체국 접수·자동 배송조회 대상 아님) */
+  carrier?: 'kyungdong';
+  /** 이 발송건 택배비를 기록한 지출(expenses) id — 경동화물 선불 택배비 */
+  feeExpenseId?: string;
   /** 우체국 요금(원) — 봇이 접수/예약조회에서 채움 (매출 화면 택배비) */
   fee?: number;
   /** 사전결제(카드) 여부 — 봇이 기록 */

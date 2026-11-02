@@ -7,6 +7,7 @@ export type SmsTemplateBodies = {
 };
 
 import { markSettingChanged } from './settingsMeta';
+import { carrierName, kyungdongTrackUrl, type Carrier } from './carrier';
 
 const LS_SMS_TEMPLATES = 'cybertruck-sms-templates-v1';
 
@@ -117,24 +118,34 @@ export function buildCompleteSmsBody(): string {
 
 /**
  * 발송안내 SMS — {{등기번호}} placeholder is replaced when trackingNumber is present.
+ * {{택배사}} 는 택배사 이름(우체국/경동화물)으로 바뀜.
+ * 경동화물이면 템플릿의 「우체국 등기번호」→「경동화물 송장번호」, 「우체국」→「경동화물」로 바꾸고 경동 배송조회 링크를 붙임.
  * Without tracking, the placeholder clause is stripped.
  * If the template has no placeholder but tracking exists, append a short tracking clause
  * (preserves prior buildShippingSmsBody behavior for custom templates).
  */
-export function buildShippingSmsBody(trackingNumber?: string): string {
-  const body = getSmsTemplates().발송;
+export function buildShippingSmsBody(trackingNumber?: string, carrier: Carrier = 'epost'): string {
+  const kd = carrier === 'kyungdong';
+  const name = carrierName(carrier);
+  let body = getSmsTemplates().발송.replaceAll('{{택배사}}', name);
+  if (kd) body = body.replaceAll('우체국 등기번호', '경동화물 송장번호').replaceAll('우체국', '경동화물');
   const tn = trackingNumber?.trim();
   if (tn) {
+    const clause = kd ? `경동화물 송장번호는 ${tn} 입니다.` : `우체국 등기번호는 ${tn} 입니다.`;
+    let out: string;
     if (body.includes('{{등기번호}}')) {
-      return body.replaceAll('{{등기번호}}', tn);
+      out = body.replaceAll('{{등기번호}}', tn);
+    } else {
+      const marker = '발송되었습니다.';
+      const idx = body.indexOf(marker);
+      if (idx >= 0) {
+        const at = idx + marker.length;
+        out = `${body.slice(0, at)} ${clause}${body.slice(at)}`;
+      } else {
+        out = `${body} ${clause}`;
+      }
     }
-    const marker = '발송되었습니다.';
-    const idx = body.indexOf(marker);
-    if (idx >= 0) {
-      const at = idx + marker.length;
-      return `${body.slice(0, at)} 우체국 등기번호는 ${tn} 입니다.${body.slice(at)}`;
-    }
-    return `${body} 우체국 등기번호는 ${tn} 입니다.`;
+    return kd ? `${out}\n배송조회: ${kyungdongTrackUrl(tn)}` : out;
   }
   return stripTrackingPlaceholder(body);
 }
