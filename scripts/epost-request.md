@@ -51,6 +51,6 @@ pending/running 동안 앱의 「접수 요청」 버튼은 비활성. done/erro
 ## 봇 처리 순서
 1. `설정` A:C 읽기 → `epostRequest` 행, status `pending` 이면 시작.
 2. `mode`(없으면 counter)·`pickupDate` 확인. status `running`, startedAt 기록 (C열 = now).
-3. `주문` 탭 R열 JSON `.sh[]` 에서 `shipmentIds` 중 postStatus `requested` 인 것만 접수 (cancelled/registered 는 건너뜀). 기존 흐름: `npx tsx scripts/epost-queue.mts <values.json>`.
+3. `주문` 탭 R열 JSON `.sh[]` 에서 `shipmentIds` 중 postStatus `requested` 인 것만 접수 (cancelled/registered 는 건너뜀. `carrier:"kyungdong"` 경동화물 발송건은 처음부터 registered 라 자연히 제외 — 우체국 접수 대상 아님). 기존 흐름: `npx tsx scripts/epost-queue.mts <values.json>`.
 4. 성공: 각 발송건 `postStatus:"registered"`, `registeredAt`, `receiptNo`, `updatedAt` = 같은 ms, 그 주문 `I{row}` 에도 같은 ms. 그 다음 epostRequest 를 `done` + receiptNo/count/amount (C열 = now).
 5. 실패: `error` + message (예: `우체국 로그인 필요`, `카드 확인 필요`), C열 = now. 발송건은 requested 그대로.

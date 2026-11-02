@@ -5,6 +5,12 @@
 → 「송장 등록」 화면으로 붙여넣은 것과 똑같이 표시됨 (주문 카드 `✅ 접수 완료 · 송장 …`, 조회 페이지 `📦 N차 발송 · 우체국 … 배송조회`).
 설정 탭 행을 하나 더 두는 방식(앱이 적용)은 쓰지 않음: 설정 탭은 앱이 통째로 다시 쓰므로 봇 쓰기가 덮일 위험이 더 큼.
 
+## ⚠️ 경동화물(`carrier:"kyungdong"`) 발송건은 건드리지 않기
+- MAT 같은 큰 짐은 앱에서 「🚛 경동화물」로 송장을 직접 입력함 → R열 `sh[]` 항목에 `"carrier":"kyungdong"`, 처음부터 `postStatus:"registered"` + `trackingNumber`(경동 송장) + `prepaid:true`(+ 택배비 `fee`, `feeExpenseId`).
+- **이 루틴(송장 등록·배달완료 확인)과 우체국 접수 요청은 `carrier` 가 `"kyungdong"` 인 발송건을 전부 건너뜀.** 우체국 조회 URL 에 넣으면 안 됨(다른 택배사 번호). `delivered` 도 봇이 쓰지 않음.
+- `carrier` 필드가 없는 발송건 = 우체국(기존 데이터 전부). 알 수 없는 필드는 그대로 보존.
+- 경동 조회 URL(참고): `https://kdexp.com/service/delivery/etc/delivery.do?barcode=<송장번호>`
+
 ## 행 / 열
 - 탭 `Orders`, 1행 헤더: `A id | B name | C items | D address | E phone | F group(안 씀) | G status | H priority | I updatedAt(ms) | J createdAt | K trackingNumber | L amount | M paid | N paidAt | … | R progress(JSON)`
 - R열 JSON 예: `{"i":"<주문id>","v":2,"d":{…},"sh":[{"id":"sh-…","no":1,"items":{"제품":1},"postStatus":"registered","mode":"visit","requestedAt":…,"registeredAt":…,"receiptNo":"2026102628385601","prepaid":true,"updatedAt":…}],"x":{…}}`
@@ -34,7 +40,7 @@ G열 status 는 **봇이 바꾸지 말 것**: 앱이 동기화 후 "모든 품�
 - 조회 URL (로그인 불필요): `https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=<등기번호>`
   - **WebFetch 로는 정상 조회됨** (2026-10-27 확인: 6892013747030 → 기본정보 표 `배달결과 = 배달완료`, 상세 `2026.09.19 19:41 … 배달완료`).
   - **박스에서 curl 은 안 됨** (TLS 핸드셰이크에서 끊김 — 해외 IP 차단 추정). 루틴은 WebFetch(또는 브라우저)로 조회.
-- 대상: `postStatus:"registered"`, `trackingNumber` 있음, `delivered` 아님인 발송건 (취소건 제외). 접수 후 1년 지나면 조회 불가.
+- 대상: `postStatus:"registered"`, `trackingNumber` 있음, `delivered` 아님, **`carrier` 가 `kyungdong` 아님**인 발송건 (취소건 제외). 접수 후 1년 지나면 조회 불가.
 - 판정: 기본정보 표 `배달결과` 칸이 `배달완료` (또는 상세 마지막 줄 처리현황이 `배달완료`).
 - 쓰기: 그 발송건 `delivered: true`, `deliveredAt: <배달완료 날짜·시각 ms (KST)>`, `updatedAt: now` + 행 `I` = now.
   `delivered` 는 한 번 true 면 앱 병합에서 유지됨 (false 로 되돌리지 말 것).
