@@ -40,7 +40,7 @@ function catalog_() {
 function shopBank_() {
   var s = setting_('shop') || {};
   if (!s.bankNumber) return null;
-  return { bank: String(s.bankName || ''), number: String(s.bankNumber || ''), holder: String(s.bankHolder || '') };
+  return { bank: String(s.bankName || '카카오뱅크'), number: String(s.bankNumber || ''), holder: String(s.bankHolder || '') };
 }
 
 function digits_(s) { return String(s || '').replace(/\D/g, ''); }
