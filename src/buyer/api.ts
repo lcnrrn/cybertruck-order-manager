@@ -37,7 +37,7 @@ export async function shopInfo(): Promise<ShopInfo | null> {
       }
     }
     const b = j.bank as { bank?: string; number?: string; holder?: string } | null;
-    return { images, bank: b && b.number ? { bank: String(b.bank || ''), number: String(b.number), holder: String(b.holder || '') } : null };
+    return { images, bank: b && b.number ? { bank: String(b.bank || '카카오뱅크'), number: String(b.number), holder: String(b.holder || '') } : null };
   } catch {
     return null;
   }

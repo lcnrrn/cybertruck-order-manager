@@ -7,6 +7,14 @@ export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxDEKz1C
 
 export const BANK = { number: '3333373647928', bank: '카카오뱅크', holder: '이대규' };
 
+/** 은행명 + 계좌번호 — 계좌번호에 이미 은행(한글)이 들어 있으면 앞에 또 붙이지 않음 */
+export function bankLabel(b: { bank?: string; number: string }): string {
+  const bank = (b.bank || '').trim() || BANK.bank;
+  const no = (b.number || '').trim();
+  if (/[가-힣]/.test(no) || no.startsWith(bank)) return no;
+  return `${bank} ${no}`;
+}
+
 export interface BuyerOption {
   /** 주문 관리 앱 제품명 (설정 products 와 똑같아야 함) */
   name: string;

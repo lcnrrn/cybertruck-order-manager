@@ -17,7 +17,7 @@ import {
   Sparkles,
   Truck,
 } from 'lucide-react';
-import { BANK, CATALOG, SHIPPING, epostTrackUrl } from './config';
+import { BANK, CATALOG, SHIPPING, bankLabel, epostTrackUrl } from './config';
 import { apiReady, lookup, shopInfo, submitOrder, type LookupOrder, type ShopInfo } from './api';
 import { orderItemProgress, pctKey, progressTotals } from '../production';
 import { TruckArt } from '../ui/Art';
@@ -83,8 +83,8 @@ function BankCard({ bank, amount }: { bank: { bank: string; number: string; hold
   return (
     <div className="b-bankcard">
       <div className="b-bank-top"><Banknote size={18} /><span>입금 계좌</span></div>
-      <div className="b-bank-no">{bank.number}</div>
-      <div className="b-bank-meta">{bank.bank} · 예금주 {bank.holder}</div>
+      <div className="b-bank-no">{bankLabel(bank)}</div>
+      <div className="b-bank-meta">예금주 {bank.holder}</div>
       {amount ? <div className="b-bank-amt">입금하실 금액 <b>{won(amount)}</b></div> : null}
       <div className="b-bank-actions">
         <CopyBtn text={bank.number} label="계좌번호 복사" />
@@ -235,7 +235,7 @@ function OrderPage() {
         <button type="button" className="b-btn" disabled={busy || !apiReady()} onClick={submit}>{busy ? '보내는 중…' : '주문하기'}</button>
       </div>
       {err && <div className="b-err" role="alert">{err}</div>}
-      <p className="b-muted b-small b-center">입금 계좌: {shop.bank.bank} {shop.bank.number} {shop.bank.holder}</p>
+      <p className="b-muted b-small b-center">입금 계좌: {bankLabel(shop.bank)} (예금주 {shop.bank.holder})</p>
     </div>
   );
 }

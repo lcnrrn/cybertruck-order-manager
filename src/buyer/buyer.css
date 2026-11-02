@@ -73,7 +73,7 @@ em{font-style:normal;color:#ff9b9b;font-size:12px;margin-left:4px;font-weight:70
 .b-bankcard{position:relative;overflow:hidden;margin:12px 0;padding:18px;border-radius:20px;background:linear-gradient(135deg,#1d2a3a 0%,#0f1722 60%,#132235 100%);border:1px solid rgba(94,225,255,.3);box-shadow:0 14px 36px rgba(0,0,0,.45)}
 .b-bankcard::after{content:'';position:absolute;right:-40px;top:-40px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(94,225,255,.2),transparent 70%)}
 .b-bank-top{display:flex;align-items:center;gap:6px;color:var(--accent);font-size:13px;font-weight:700}
-.b-bank-no{font-size:24px;font-weight:800;letter-spacing:.02em;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+.b-bank-no{font-size:22px;font-weight:800;letter-spacing:.02em;margin:8px 0 2px;font-variant-numeric:tabular-nums}
 .b-bank-meta{color:#c9d3df;font-size:14px}
 .b-bank-amt{margin-top:10px;font-size:14px;color:#c9d3df}.b-bank-amt b{font-size:20px;color:#fff;margin-left:4px}
 .b-bank-actions{display:flex;gap:8px;margin-top:12px;position:relative;z-index:1}
