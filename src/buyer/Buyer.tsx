@@ -17,7 +17,7 @@ import {
   Sparkles,
   Truck,
 } from 'lucide-react';
-import { BANK, CATALOG, SHIPPING, bankLabel, epostTrackUrl } from './config';
+import { BANK, CATALOG, SHIPPING, bankLabel, epostTrackUrl, kyungdongTrackUrl } from './config';
 import { apiReady, lookup, shopInfo, submitOrder, type LookupOrder, type ShopInfo } from './api';
 import { orderItemProgress, pctKey, progressTotals } from '../production';
 import { TruckArt } from '../ui/Art';
@@ -354,7 +354,9 @@ function LookupPage() {
                 <div className="b-row"><b className="b-ship-title">{sh.delivered ? <House size={15} /> : <Truck size={15} />}{sh.no}차 발송{sh.delivered ? ' · 배달완료' : ''}</b>{sh.at ? <span className="b-muted b-small">{new Date(sh.at).toLocaleDateString('ko-KR')}</span> : null}</div>
                 <div className="b-small">{Object.entries(sh.items).map(([k, v]) => `${k}${v > 1 ? ` ${v}개` : ''}`).join(' · ')}</div>
                 {sh.trackingNumber ? (
-                  <a className="b-track" href={epostTrackUrl(sh.trackingNumber)} target="_blank" rel="noreferrer">우체국 {sh.trackingNumber} <span>배송조회 ›</span></a>
+                  sh.carrier === 'kyungdong'
+                    ? <a className="b-track" href={kyungdongTrackUrl(sh.trackingNumber)} target="_blank" rel="noreferrer">경동화물 {sh.trackingNumber} <span>배송조회 ›</span></a>
+                    : <a className="b-track" href={epostTrackUrl(sh.trackingNumber)} target="_blank" rel="noreferrer">우체국 {sh.trackingNumber} <span>배송조회 ›</span></a>
                 ) : (
                   <div className="b-muted b-small">우체국 접수 완료 · 송장번호 곧 나와요</div>
                 )}

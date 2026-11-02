@@ -1480,3 +1480,11 @@ html, body { overflow-x: clip; }
 .bl-badge { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #ef4444; color: #fff; font-size: 0.7rem; font-style: normal; font-weight: 700; }
 .form-bl-warn { margin: 6px 0; padding: 8px 10px; border-radius: 10px; background: rgba(239,68,68,0.16); border: 1px solid #ef4444; color: #fecaca; font-weight: 700; font-size: 0.86rem; }
 .cmd-pill.st-환불 { background: rgba(167,139,250,.18); color: #c4b5fd; }
+
+/* 경동화물 (수동 송장) */
+.ship-btn.courier { background: #4338ca; }
+.ship-btns .ship-btn.courier { grid-column: 1 / -1; }
+.mode-badge.courier { background: #4338ca; }
+.courier-fields { display: grid; gap: 8px; margin: 8px 0; }
+.courier-fields .field input { width: 100%; }
+.order-tracking a { margin-left: 4px; }

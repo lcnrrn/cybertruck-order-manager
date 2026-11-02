@@ -47,6 +47,11 @@ export const CATALOG: BuyerGroup[] = [
 ];
 export const SHIPPING = { name: '우체국 택배', label: '우체국 택배', price: 4500 };
 
+/** 경동화물(경동택배) 공식 운송장조회 URL */
+export function kyungdongTrackUrl(no: string): string {
+  return `https://kdexp.com/service/delivery/etc/delivery.do?barcode=${encodeURIComponent(no.replace(/\D/g, ''))}`;
+}
+
 export function epostTrackUrl(no: string): string {
   return `https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=${encodeURIComponent(no.replace(/\D/g, ''))}`;
 }
