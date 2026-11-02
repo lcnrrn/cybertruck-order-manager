@@ -434,7 +434,7 @@ export function SalesReport({ filament, orders, products, period, onPeriod, onTo
       </ul>
 
       {data.parcels > 0 && (
-        <p className="hint">📦 이 기간 발송 {data.parcels}건 · 택배비 {formatWon(data.shipFee)} (우체국 접수 때 기록된 요금 기준, 매출 − 택배비 = {formatWon(data.total - data.shipFee)})</p>
+        <p className="hint">📦 이 기간 발송 {data.parcels}건 · 택배비 {formatWon(data.shipFee)} (우체국 접수 때 · 경동화물 입력 때 기록된 요금 기준, 매출 − 택배비 = {formatWon(data.total - data.shipFee)})</p>
       )}
 
       <h3 className="report-h">제품별 판매</h3>

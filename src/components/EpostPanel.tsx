@@ -76,14 +76,14 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose, 
   const dateBad = !pickupDate || isWeekend(pickupDate) || pickupDate < minDate;
   const pending = useMemo(() => {
     const out: { o: Order; s: Shipment }[] = [];
-    for (const o of orders) for (const s of o.shipments || []) if (s.postStatus === 'requested') out.push({ o, s });
+    for (const o of orders) for (const s of o.shipments || []) if (s.postStatus === 'requested' && s.carrier !== 'kyungdong') out.push({ o, s });
     return out.sort((a, b) => a.s.requestedAt - b.s.requestedAt);
   }, [orders]);
   const history = useMemo(() => {
     const m = new Map<string, { receiptNo: string; at: number; rows: { o: Order; s: Shipment }[] }>();
     for (const o of orders)
       for (const s of o.shipments || []) {
-        if (s.postStatus !== 'registered') continue;
+        if (s.postStatus !== 'registered' || s.carrier === 'kyungdong') continue;
         const k = s.receiptNo || '(접수번호 없음)';
         const g = m.get(k) || { receiptNo: k, at: 0, rows: [] };
         g.at = Math.max(g.at, s.registeredAt || s.updatedAt);

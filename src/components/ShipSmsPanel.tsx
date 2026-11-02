@@ -1,3 +1,4 @@
+import { carrierOf, isKyungdong } from '../carrier';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Order, Shipment } from '../types';
 import { activeShipments, shipmentLabel } from '../shipments';
@@ -28,7 +29,7 @@ export function ShipSmsPanel({ orders, copyText, onToggleSent, onClose }: Props)
       for (const sh of activeShipments(o)) {
         if (sh.postStatus !== 'registered' || !sh.trackingNumber) continue;
         if (!showSent && sh.smsSent) continue;
-        out.push({ order: o, sh, body: buildShippingSmsBody(sh.trackingNumber) });
+        out.push({ order: o, sh, body: buildShippingSmsBody(sh.trackingNumber, carrierOf(sh)) });
       }
     }
     return out.sort((a, b) => Number(!!a.sh.smsSent) - Number(!!b.sh.smsSent) || (b.sh.registeredAt || 0) - (a.sh.registeredAt || 0));
@@ -121,7 +122,7 @@ export function ShipSmsPanel({ orders, copyText, onToggleSent, onClose }: Props)
             <div className="ship-sms-head">
               <b>{order.name}</b>
               <span>{formatPhoneDisplay(order.phone) || '연락처 없음'}</span>
-              <span className="ship-sms-no">{sh.no}차 · {sh.trackingNumber}{sh.delivered ? ' · 배달완료' : ''}</span>
+              <span className="ship-sms-no">{sh.no}차 · {isKyungdong(sh) ? '경동화물 ' : ''}{sh.trackingNumber}{sh.delivered ? ' · 배달완료' : ''}</span>
             </div>
             <div className="ship-sms-items">{shipmentLabel(sh)}</div>
             <pre className="ship-sms-body">{body}</pre>

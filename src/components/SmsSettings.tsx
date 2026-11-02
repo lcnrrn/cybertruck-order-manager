@@ -34,7 +34,8 @@ export function SmsSettings({ onClose, onSaved }: Props) {
       <p className="hint">
         접수문자 · 완료안내 · 발송안내 버튼에 들어가는 문구입니다. 구글 시트로 다른 기기와 같이 맞춰집니다.
         발송 안내에 <code>{'{{등기번호}}'}</code>를 넣으면 송장이 있을 때 자동으로
-        바뀝니다.
+        바뀝니다. 경동화물 건은 「우체국 등기번호」가 자동으로 「경동화물 송장번호」로 바뀌고 경동 배송조회 링크가 붙어요.
+        택배사 이름만 넣고 싶으면 <code>{'{{택배사}}'}</code>를 쓰세요.
       </p>
 
       <label className="field">
