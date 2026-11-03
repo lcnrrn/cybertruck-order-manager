@@ -352,6 +352,18 @@ async function readIdRows(accessToken: string, spreadsheetId: string): Promise<{
   return { rows, count: vals.length };
 }
 
+/** 한 열(예: M)에서 값이 있는 마지막 행 번호 (없으면 0) */
+async function lastRowOfColumn(accessToken: string, spreadsheetId: string, col: string): Promise<number> {
+  const res = await sheetsFetch(accessToken, `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!${col}:${col}`)}`);
+  if (!res.ok) throw new Error(`시트 읽기 실패: ${await readError(res)}`);
+  const data = (await res.json()) as { values?: string[][] };
+  let last = 0;
+  (data.values || []).forEach((r, i) => {
+    if (String(r?.[0] ?? '').trim()) last = i + 1;
+  });
+  return last;
+}
+
 /**
  * 고친 주문만 그 행에 씀 (id 로 행을 찾음, 없으면 맨 아래 추가). 다른 주문 행은 절대 건드리지 않음.
  * 쓰기 직전에 A 열을 다시 읽어서 행 위치가 바뀌었어도 정확한 행에 씀.
@@ -362,14 +374,23 @@ export async function patchOrders(accessToken: string, orders: Order[]): Promise
   const spreadsheetId = sheetIdOrThrow();
   const { rows, count } = await readIdRows(accessToken, spreadsheetId);
   const data: { range: string; values: string[][] }[] = [];
-  const append: string[][] = [];
+  const append: { id: string; row: string[] }[] = [];
   for (const o of orders) {
     const at = rows.get(o.id);
     const row = orderToRow(o);
     if (at?.length) for (const n of at) data.push({ range: `${ORDERS_SHEET_NAME}!A${n}:R${n}`, values: [row] });
-    else append.push(row);
+    else append.push({ id: o.id, row });
   }
   if (count === 0) data.unshift({ range: `${ORDERS_SHEET_NAME}!A1:R1`, values: [[...ORDERS_HEADERS]] });
+  // 새 주문은 values:append 를 쓰지 않고 '맨 아래 빈 행'에 번호를 정해서 씀.
+  // (append 는 시트 안의 '표'를 스스로 찾는데, 표가 옆 열(M~)로 밀려 있으면 새 주문이 A 열이 아닌 M 열부터 써져서
+  //  다음 동기화 때 'A 열에 없네' 하고 같은 주문을 또 쓰는 일이 끝없이 반복됨)
+  let nextRow = 0;
+  if (append.length) {
+    const lastUsed = Math.max(count, 1, await lastRowOfColumn(accessToken, spreadsheetId, 'M'));
+    nextRow = lastUsed + 1;
+    append.forEach((a, i) => data.push({ range: `${ORDERS_SHEET_NAME}!A${nextRow + i}:R${nextRow + i}`, values: [a.row] }));
+  }
   if (data.length) {
     const res = await sheetsFetch(accessToken, `${spreadsheetId}/values:batchUpdate`, {
       method: 'POST',
@@ -378,12 +399,10 @@ export async function patchOrders(accessToken: string, orders: Order[]): Promise
     if (!res.ok) throw new Error(`시트 쓰기 실패: ${await readError(res)}`);
   }
   if (append.length) {
-    const res = await sheetsFetch(
-      accessToken,
-      `${spreadsheetId}/values/${encodeURIComponent(`${ORDERS_SHEET_NAME}!A:R`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-      { method: 'POST', body: JSON.stringify({ values: append }) },
-    );
-    if (!res.ok) throw new Error(`시트 추가 실패: ${await readError(res)}`);
+    // 쓴 뒤 A 열을 다시 읽어 확인 (다른 기기가 같은 순간 같은 행에 써서 덮었으면 다음 동기화에 다시 씀)
+    const after = await readIdRows(accessToken, spreadsheetId);
+    const missing = append.filter((a) => !after.rows.has(a.id)).map((a) => a.id);
+    if (missing.length) throw new Error(`새 주문 ${missing.length}건이 시트 A 열에 안 보여서 다시 시도해요`);
   }
   // S1: 마지막으로 쓴 기기·빌드
   try {
@@ -392,7 +411,7 @@ export async function patchOrders(accessToken: string, orders: Order[]): Promise
   } catch {
     /* ignore */
   }
-  return { updated: data.length, appended: append.length };
+  return { updated: data.length - append.length, appended: append.length };
 }
 
 /** 시트 L~R 열에 해당하는 주문 필드 */

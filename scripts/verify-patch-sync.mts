@@ -32,9 +32,10 @@ g.fetch = async (url: string, init?: { method?: string; body?: string }) => {
   if (!m) throw new Error('unexpected ' + u);
   const [, tab, rg, op] = m;
   if (op === ':clear') throw new Error('clear must not be used: ' + u);
-  if (op === ':append') { const t = tabs.get(tab) || []; tabs.set(tab, t); for (const r of body.values) { t.push(r.map(String)); writes.push(`${tab}!append`); } return json({}); }
+  if (op === ':append') { if (tab === 'Orders') throw new Error('Orders 에 values:append 금지 (표가 M열로 밀리는 사고)'); const t = tabs.get(tab) || []; tabs.set(tab, t); for (const r of body.values) { t.push(r.map(String)); writes.push(`${tab}!append`); } return json({}); }
   if (method === 'PUT') { setCells(tab, rg, body.values); return json({}); }
   const t = tabs.get(tab) || [];
+  if (rg === 'M:M') return json({ values: t.map((r) => [r[12] ?? '']) });
   if (rg === 'A:A') return json({ values: t.map((r) => [r[0] ?? '']) });
   if (rg === 'A:C') return json({ values: t.map((r) => r.slice(0, 3)) });
   return json({ values: t.map((r) => r.slice(0, 18)) });
@@ -94,7 +95,7 @@ r = await sync('A', A); A = r.list; assert.equal(get(A, 'o3').name, '박삼(B2)'
 
 // 5) 새 주문 추가 → 맨 아래에 append, 다른 행은 안 건드림
 A = [...A, mk('o4', '최사', 4000)];
-r = await sync('A', A); A = r.list; assert.deepEqual(r.writes, ['Orders!append']);
+r = await sync('A', A); A = r.list; assert.deepEqual(r.writes, ['Orders!A5:R5']);
 r = await sync('B', B); B = r.list; assert.ok(get(B, 'o4'));
 
 // 6) iOS 가 저장소를 지움 → 다시 받아오기만, 손실 없음
@@ -138,4 +139,18 @@ const shopA = JSON.parse(localStorage.getItem(SETTING_LS_KEYS.shop)!);
 assert.equal(shopA.bankName, '토스뱅크'); assert.equal(shopA.costPerGram, 25);
 // 주문 행 개수는 그대로 (지우거나 밀지 않음)
 assert.equal(tabs.get('Orders')!.length, 5);
+// 8) 시트 아래쪽에 M 열부터 밀려 써진 찌꺼기 행이 있어도: 새 주문은 A 열의 그 아래 빈 행에 쓰고, 다시 동기화해도 중복 안 생김
+{
+  const t = tabs.get('Orders')!;
+  for (let i = 10; i < 14; i++) { const r: string[] = []; r[12] = 'junk-' + i; r[13] = '찌꺼기'; t[i] = Array.from(r, (v) => v ?? ''); }
+  for (let i = 0; i < 14; i++) t[i] ||= [];
+  const before = t.length;
+  A = [...A, mk('o9', '신규9', 9000)];
+  const w = await sync('A', A); A = w.list;
+  assert.deepEqual(w.writes, ['Orders!A15:R15'], 'new order goes below the junk, in column A');
+  assert.equal(tabs.get('Orders')![14][0], 'o9'); assert.equal(tabs.get('Orders')!.length, before + 1);
+  const again = await sync('A', A); A = again.list;
+  assert.deepEqual(again.writes, [], 'no re-append loop');
+  assert.equal(tabs.get('Orders')!.filter((r) => r?.[0] === 'o9').length, 1);
+}
 console.log('patch sync OK');
