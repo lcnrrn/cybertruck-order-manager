@@ -154,7 +154,7 @@ function OrderPage() {
         </div>
         <BankCard bank={shop.bank} amount={done.total} />
         <ol className="b-howto">
-          <li><span className="b-dot"><Banknote size={15} /></span><div><b>입금해 주세요</b><small>입금자명 「{done.payer}」 으로 보내 주시면 확인이 빠라요.</small></div></li>
+          <li><span className="b-dot"><Banknote size={15} /></span><div><b>입금해 주세요</b><small>입금자명 「{done.payer}」 으로 보내 주시면 확인이 빨라요.</small></div></li>
           <li><span className="b-dot"><Hammer size={15} /></span><div><b>입금 확인 후 제작 시작</b><small>주문받은 뒤 하나하나 출력해요.</small></div></li>
           <li><span className="b-dot"><Truck size={15} /></span><div><b>우체국 택배로 발송</b><small>송장번호는 「내 주문 조회」에서 바로 볼 수 있어요.</small></div></li>
         </ol>
@@ -217,7 +217,7 @@ function OrderPage() {
         <label>연락처 <em>필수</em><input value={f.phone} onChange={set('phone')} inputMode="tel" autoComplete="tel" placeholder="010-0000-0000" maxLength={13} /></label>
         <label>주소 <em>필수</em><textarea value={f.address} onChange={set('address')} autoComplete="street-address" rows={2} maxLength={200} placeholder="동·호수까지 적어 주세요" /></label>
         <label>입금자명 <span className="b-muted">(성함과 다를 때만)</span><input value={f.payer} onChange={set('payer')} maxLength={30} /></label>
-        <label>요청사항 <span className="b-muted">(색상 변경 등)</span><textarea value={f.memo} onChange={set('memo')} rows={2} maxLength={500} placeholder="예) 견인고리 커버 블랙 / 앤블럼 화이트" /></label>
+        <label>요청사항 <span className="b-muted">(색상 변경 등)</span><textarea value={f.memo} onChange={set('memo')} rows={2} maxLength={500} placeholder="예) 견인고리 커버 블랙 / 앰블럼 화이트" /></label>
         <input className="b-hp" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} aria-hidden="true" />
       </section>
       <section className="b-card">
