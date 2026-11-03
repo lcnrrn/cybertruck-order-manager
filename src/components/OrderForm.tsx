@@ -7,7 +7,9 @@ import {
   parseItemsAgainstCatalog,
   type Product,
 } from '../products';
-import { autoOrderAmount, formatWon, orderGrams } from '../production';
+import { SHIPPING_NAME, autoOrderAmount, formatWon, orderGrams } from '../production';
+import { svcShipFeeOf } from '../serviceShip';
+import { loadShop } from '../shop';
 import { matchBlacklist, type BlacklistEntry } from '../blacklist';
 import { orderSlots, swatchOf, typeLabel, type FilamentState } from '../filament';
 
@@ -299,6 +301,9 @@ export function OrderForm({
               </li>
             ))}
           </ul>
+        )}
+        {selected.includes(SHIPPING_NAME) && priceOf(SHIPPING_NAME) === 0 && (
+          <p className="hint service-ship-hint">🎁 우체국 택배 서비스: 저장하면 내가 내는 택배비 {svcShipFeeOf(loadShop()).toLocaleString('ko-KR')}원이 지출(택배비)로 잡혀 예상 잔고에서 빠져요 (끄면 다시 돌아와요 · 경동화물은 제외)</p>
         )}
         {selected.length > 0 && (
           <p className="qty-total">

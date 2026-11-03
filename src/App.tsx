@@ -33,6 +33,8 @@ import { BlacklistPanel } from './components/BlacklistPanel';
 import { useBlacklist } from './blacklist';
 import { applyRefund, removeRefund } from './refunds';
 import { COURIER_FEE_CATEGORY, loadExpenses, newExpenseId, saveExpenses } from './expenses';
+import { reconcileSvcFee, svcShipFeeOf } from './serviceShip';
+import { loadShop } from './shop';
 import { TrackingRegisterModal } from './components/TrackingRegisterModal';
 import { hasGoogleConfig } from './google/config';
 import { defaultPeriod } from './period';
@@ -185,12 +187,34 @@ export default function App() {
     lockToastRef.current('🔒 최신 내용을 받은 뒤에 수정할 수 있어요');
     return true;
   };
-  const addOrder: typeof rawAddOrder = (d) => (blocked() ? (undefined as unknown as ReturnType<typeof rawAddOrder>) : rawAddOrder(d));
+  /** 「우체국 택배」 서비스(무료배송)를 켜면 내가 내는 택배비를 지출로 잡음 — 바뀐 주문 하나만 보고, 한 주문에 한 건(id 고정) */
+  const syncSvcFee = (prev: Order | null, next: Order | null) => {
+    const st = loadExpenses();
+    const upd = reconcileSvcFee(prev, next, st, svcShipFeeOf(loadShop()), Date.now());
+    if (!upd) return;
+    saveExpenses(upd);
+    try { window.dispatchEvent(new CustomEvent(SETTINGS_APPLIED_EVENT)); } catch { /* ignore */ }
+    const on = !!next && upd.items.some((x) => x.id === `svc-${next.id}` && !x.deleted);
+    const msg = on ? `🎁 서비스 택배비 ${svcShipFeeOf(loadShop()).toLocaleString('ko-KR')}원을 지출로 잡았어요` : '서비스 택배비 지출을 뺐어요';
+    setTimeout(() => lockToastRef.current(msg), 0); // 「저장됨」 토스트 뒤에 덮어 보이게
+  };
+  const addOrder: typeof rawAddOrder = (d) => {
+    if (blocked()) return undefined as unknown as ReturnType<typeof rawAddOrder>;
+    const o = rawAddOrder(d);
+    syncSvcFee(null, o);
+    return o;
+  };
   const updateOrder: typeof rawUpdateOrder = (id, patch) => {
-    if (!blocked()) rawUpdateOrder(id, patch);
+    if (blocked()) return;
+    const prev = orders.find((x) => x.id === id) || null;
+    rawUpdateOrder(id, patch);
+    if (prev) syncSvcFee(prev, { ...prev, ...patch, ...('prices' in patch && !patch.prices ? { prices: undefined } : {}) });
   };
   const deleteOrder: typeof rawDeleteOrder = (id) => {
-    if (!blocked()) rawDeleteOrder(id);
+    if (blocked()) return;
+    const prev = orders.find((x) => x.id === id) || null;
+    rawDeleteOrder(id);
+    if (prev) syncSvcFee(prev, null);
   };
   const setStatus: typeof rawSetStatus = (id, st) => {
     if (!blocked()) rawSetStatus(id, st);
@@ -217,7 +241,10 @@ export default function App() {
     else rawSetItemDone(id, k, c);
   };
   const transformOrder: typeof rawTransformOrder = (id, fn) => {
-    if (!blocked()) rawTransformOrder(id, fn);
+    if (blocked()) return;
+    const prev = orders.find((x) => x.id === id) || null;
+    rawTransformOrder(id, fn);
+    if (prev) syncSvcFee(prev, fn(prev) || prev);
   };
   const [postOnly, setPostOnly] = useState(false);
   const [salesView, setSalesView] = useState<'report' | 'profit'>('report');
