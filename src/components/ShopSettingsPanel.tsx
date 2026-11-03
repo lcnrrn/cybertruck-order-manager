@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Copy, ExternalLink, Landmark, Store } from 'lucide-react';
 import { bankInfo, loadShop, saveShop, type ShopSettings } from '../shop';
 import { DEFAULT_COST_PER_GRAM, DEFAULT_SHIP_FEE } from '../profit';
+import { DEFAULT_SVC_SHIP_FEE } from '../serviceShip';
 
 interface Props {
   copyText: (text: string, ok: string) => void;
@@ -39,6 +40,7 @@ export function ShopSettingsPanel({ copyText, onSaved, onClose }: Props) {
     bankHolder: init.bankHolder || '',
     costPerGram: init.costPerGram !== undefined ? String(init.costPerGram) : '',
     shipFee: init.shipFee !== undefined ? String(init.shipFee) : '',
+    svcShipFee: init.svcShipFee !== undefined ? String(init.svcShipFee) : '',
   });
   const def = bankInfo({});
   const links = buyerLinks();
@@ -48,6 +50,7 @@ export function ShopSettingsPanel({ copyText, onSaved, onClose }: Props) {
     bankHolder: f.bankHolder.trim() || undefined,
     costPerGram: num(f.costPerGram),
     shipFee: num(f.shipFee),
+    svcShipFee: num(f.svcShipFee),
   };
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
 
@@ -70,7 +73,9 @@ export function ShopSettingsPanel({ copyText, onSaved, onClose }: Props) {
         <div className="form-grid">
           <label>필라멘트 1g 원가(원)<input value={f.costPerGram} onChange={set('costPerGram')} inputMode="decimal" placeholder={`비우면 구매 기록 평균 또는 ${DEFAULT_COST_PER_GRAM}`} /></label>
           <label>택배비 1건(원)<input value={f.shipFee} onChange={set('shipFee')} inputMode="numeric" placeholder={String(DEFAULT_SHIP_FEE)} /></label>
+          <label>서비스(무료배송) 택배비 — 내가 내는 금액(원)<input value={f.svcShipFee} onChange={set('svcShipFee')} inputMode="numeric" placeholder={String(DEFAULT_SVC_SHIP_FEE)} /></label>
         </div>
+        <p className="muted-line">주문 수정에서 「우체국 택배」 줄의 [서비스]를 켜면 이 금액(기본 {DEFAULT_SVC_SHIP_FEE.toLocaleString('ko-KR')}원)이 지출(택배비)로 잡혀 예상 잔고에서 빠져요. 끄면 다시 돌아와요. 구매자에게 받는 택배비(4,000원)와는 별개예요. 금액을 바꿔도 이미 잡힌 지출은 그대로이고 앞으로 켜는 주문부터 적용돼요.</p>
       </section>
 
       <section className="panel">

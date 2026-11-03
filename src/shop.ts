@@ -11,6 +11,8 @@ export interface ShopSettings {
   costPerGram?: number;
   /** 우체국 1건 택배비 기본값(원) — 발송건에 요금이 없을 때 */
   shipFee?: number;
+  /** 서비스(무료배송) 우체국 택배 때 판매자가 내는 택배비(원) — 기본 4,500. 지출(택배비)로 잡혀 예상 잔고에서 빠짐 */
+  svcShipFee?: number;
 }
 
 const LS = SETTING_LS_KEYS.shop;
