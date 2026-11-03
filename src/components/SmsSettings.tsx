@@ -50,6 +50,7 @@ export function SmsSettings({ onClose, onSaved }: Props) {
       <p className="hint">
         <code>{'{{이름}}'}</code> <code>{'{{주문내용}}'}</code> <code>{'{{금액}}'}</code>이 자동으로 바뀝니다.
         [은행명 계좌번호 예금주] 부분은 실제 계좌로 고쳐 주세요.
+        <code>{'{{조회링크}}'}</code>는 구매자 전용 주문 조회 링크로 바뀝니다. 안 넣어도 끝에 「제작 진행 상황 확인: 링크」 줄이 자동으로 붙어요.
       </p>
 
       <label className="field">

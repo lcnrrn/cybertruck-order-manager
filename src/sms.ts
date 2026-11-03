@@ -103,12 +103,42 @@ export function resetSmsTemplates(): void {
   }
 }
 
-/** 주문 접수 SMS — {{이름}} {{주문내용}} {{금액}} 치환 */
-export function buildReceiptSmsBody(o: { name: string; items: string }, amountWon: string): string {
-  return getSmsTemplates()
+
+/** 구매자 주문 조회 페이지 (고정 주소 — 앱 주소와 같은 사이트) */
+export const LOOKUP_PAGE_URL = 'https://lcnrrn.github.io/cybertruck-order-manager/lookup.html';
+
+/**
+ * 구매자 조회 링크. 이름(성함)과 전화번호 뒷 4자리를 주소에 미리 넣어 두면
+ * 조회 페이지가 열리자마자 그 사람 주문만 자동으로 보여 줌 (서버는 이름+뒷4자리가 둘 다 맞아야 답함 → 남의 주문은 안 보임).
+ * 이름이나 번호가 부족하면 그냥 조회 페이지 주소만.
+ * 이름이 「닉네임 성함」 형식이면 서버가 끝 단어를 성함으로 보므로 마지막 단어를 씀.
+ */
+export function buildLookupLink(buyer?: { name?: string; phone?: string }): string {
+  const last4 = (buyer?.phone || '').replace(/\D/g, '').slice(-4);
+  const nm = (buyer?.name || '').trim().split(/\s+/).pop() || '';
+  const digits = (buyer?.phone || '').replace(/\D/g, '');
+  if (!nm || digits.length < 10 || last4.length !== 4) return LOOKUP_PAGE_URL;
+  return `${LOOKUP_PAGE_URL}?n=${encodeURIComponent(nm)}&k=${last4}`;
+}
+
+/** {{조회링크}} 를 링크로 바꿈. 템플릿에 없으면 맨 끝에 「label: 링크」 줄을 붙임. */
+export function withLookupLink(body: string, link: string, label: string): string {
+  if (body.includes('{{조회링크}}')) return body.replaceAll('{{조회링크}}', link);
+  return `${body.replace(/\s+$/, '')}\n${label}: ${link}`;
+}
+
+/** 「🔗 조회 링크」 버튼 문자 — 짧은 안내 + 링크만 */
+export function buildLookupSmsBody(buyer: { name?: string; phone?: string }): string {
+  return `안녕하세요 ${(buyer.name || '').trim() ? `${buyer.name!.trim()}님, ` : ''}주문하신 제품의 제작 진행 상황은 아래 링크에서 확인하실 수 있어요.\n${buildLookupLink(buyer)}`;
+}
+
+/** 주문 접수 SMS — {{이름}} {{주문내용}} {{금액}} {{조회링크}} 치환 (템플릿에 {{조회링크}} 없으면 끝에 조회 링크 줄 자동 추가) */
+export function buildReceiptSmsBody(o: { name: string; items: string; phone?: string }, amountWon: string): string {
+  const body = getSmsTemplates()
     .접수.replaceAll('{{이름}}', o.name || '')
     .replaceAll('{{주문내용}}', (o.items || '').replace(/\s*\n\s*/g, ' / '))
     .replaceAll('{{금액}}', amountWon);
+  return withLookupLink(body, buildLookupLink(o), '제작 진행 상황 확인');
 }
 
 /** 제작 완료 SMS body (user-editable). */
@@ -124,7 +154,16 @@ export function buildCompleteSmsBody(): string {
  * If the template has no placeholder but tracking exists, append a short tracking clause
  * (preserves prior buildShippingSmsBody behavior for custom templates).
  */
-export function buildShippingSmsBody(trackingNumber?: string, carrier: Carrier = 'epost'): string {
+export function buildShippingSmsBody(
+  trackingNumber?: string,
+  carrier: Carrier = 'epost',
+  buyer?: { name?: string; phone?: string },
+): string {
+  const out = buildShippingCore(trackingNumber, carrier);
+  return buyer ? withLookupLink(out, buildLookupLink(buyer), '주문 조회') : out.replaceAll('{{조회링크}}', LOOKUP_PAGE_URL);
+}
+
+function buildShippingCore(trackingNumber: string | undefined, carrier: Carrier): string {
   const kd = carrier === 'kyungdong';
   const name = carrierName(carrier);
   let body = getSmsTemplates().발송.replaceAll('{{택배사}}', name);
