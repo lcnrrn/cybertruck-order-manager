@@ -154,7 +154,7 @@ function OrderPage() {
         </div>
         <BankCard bank={shop.bank} amount={done.total} />
         <ol className="b-howto">
-          <li><span className="b-dot"><Banknote size={15} /></span><div><b>입금해 주세요</b><small>입금자명 「{done.payer}」 으로 보내 주시면 확인이 빨라요.</small></div></li>
+          <li><span className="b-dot"><Banknote size={15} /></span><div><b>입금해 주세요</b><small>입금자명 「{done.payer}」 으로 보내 주시면 확인이 빠라요.</small></div></li>
           <li><span className="b-dot"><Hammer size={15} /></span><div><b>입금 확인 후 제작 시작</b><small>주문받은 뒤 하나하나 출력해요.</small></div></li>
           <li><span className="b-dot"><Truck size={15} /></span><div><b>우체국 택배로 발송</b><small>송장번호는 「내 주문 조회」에서 바로 볼 수 있어요.</small></div></li>
         </ol>
@@ -217,7 +217,7 @@ function OrderPage() {
         <label>연락처 <em>필수</em><input value={f.phone} onChange={set('phone')} inputMode="tel" autoComplete="tel" placeholder="010-0000-0000" maxLength={13} /></label>
         <label>주소 <em>필수</em><textarea value={f.address} onChange={set('address')} autoComplete="street-address" rows={2} maxLength={200} placeholder="동·호수까지 적어 주세요" /></label>
         <label>입금자명 <span className="b-muted">(성함과 다를 때만)</span><input value={f.payer} onChange={set('payer')} maxLength={30} /></label>
-        <label>요청사항 <span className="b-muted">(색상 변경 등)</span><textarea value={f.memo} onChange={set('memo')} rows={2} maxLength={500} placeholder="예) 견인고리 커버 블랙 / 앰블럼 화이트" /></label>
+        <label>요청사항 <span className="b-muted">(색상 변경 등)</span><textarea value={f.memo} onChange={set('memo')} rows={2} maxLength={500} placeholder="예) 견인고리 커버 블랙 / 앤블럼 화이트" /></label>
         <input className="b-hp" tabIndex={-1} autoComplete="off" value={f.website} onChange={set('website')} aria-hidden="true" />
       </section>
       <section className="b-card">
@@ -256,19 +256,24 @@ const STEPS = [
 
 function LookupPage() {
   const shop = useShop();
-  const [name, setName] = useState('');
-  const [last4, setLast4] = useState('');
+  // 문자로 받은 링크(?n=성함&k=뒷4자리)면 칸을 채우고 바로 조회
+  const preset = useMemo(() => {
+    const q = new URLSearchParams(window.location.search);
+    return { n: (q.get('n') || '').trim().slice(0, 30), k: (q.get('k') || '').replace(/\D/g, '').slice(0, 4) };
+  }, []);
+  const [name, setName] = useState(preset.n);
+  const [last4, setLast4] = useState(preset.k);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [orders, setOrders] = useState<LookupOrder[] | null>(null);
   const [names, setNames] = useState<string[]>([]);
 
-  const go = async () => {
+  const go = async (nm: string = name, l4: string = last4) => {
     setErr('');
-    if (!name.trim() || !/^\d{4}$/.test(last4)) return setErr('성함과 전화번호 뒷 4자리를 넣어 주세요');
+    if (!nm.trim() || !/^\d{4}$/.test(l4)) return setErr('성함과 전화번호 뒷 4자리를 넣어 주세요');
     setBusy(true);
     try {
-      const r = await lookup(name.trim(), last4);
+      const r = await lookup(nm.trim(), l4);
       if (!r.ok) setErr(r.error || '조회에 실패했어요');
       else {
         setOrders(r.orders || []);
@@ -281,14 +286,19 @@ function LookupPage() {
     }
   };
 
+  useEffect(() => {
+    if (preset.n && /^\d{4}$/.test(preset.k) && apiReady()) void go(preset.n, preset.k);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="b-wrap">
       <Header sub="성함과 전화번호 뒷 4자리로 내 주문만 볼 수 있어요" page="lookup" />
       {!apiReady() && <NotReady />}
       <section className="b-card b-fields">
         <label>성함<input value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" maxLength={30} /></label>
-        <label>전화번호 뒷 4자리<input value={last4} onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} onKeyDown={(e) => e.key === 'Enter' && go()} /></label>
-        <button type="button" className="b-btn b-btn-wide" disabled={busy || !apiReady()} onClick={go}><Search size={18} />{busy ? '찾는 중…' : '조회하기'}</button>
+        <label>전화번호 뒷 4자리<input value={last4} onChange={(e) => setLast4(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} onKeyDown={(e) => e.key === 'Enter' && void go()} /></label>
+        <button type="button" className="b-btn b-btn-wide" disabled={busy || !apiReady()} onClick={() => void go()}><Search size={18} />{busy ? '찾는 중…' : '조회하기'}</button>
         {err && <div className="b-err" role="alert">{err}</div>}
       </section>
       {orders && !orders.length && <div className="b-card b-muted b-center">주문을 찾지 못했어요. 주문할 때 쓴 성함과 연락처인지 확인해 주세요.</div>}

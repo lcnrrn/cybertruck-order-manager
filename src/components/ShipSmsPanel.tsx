@@ -29,7 +29,7 @@ export function ShipSmsPanel({ orders, copyText, onToggleSent, onClose }: Props)
       for (const sh of activeShipments(o)) {
         if (sh.postStatus !== 'registered' || !sh.trackingNumber) continue;
         if (!showSent && sh.smsSent) continue;
-        out.push({ order: o, sh, body: buildShippingSmsBody(sh.trackingNumber, carrierOf(sh)) });
+        out.push({ order: o, sh, body: buildShippingSmsBody(sh.trackingNumber, carrierOf(sh), o) });
       }
     }
     return out.sort((a, b) => Number(!!a.sh.smsSent) - Number(!!b.sh.smsSent) || (b.sh.registeredAt || 0) - (a.sh.registeredAt || 0));
