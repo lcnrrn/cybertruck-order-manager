@@ -6,7 +6,7 @@ import type { Order, OrderStatus } from '../types';
 import { STATUS_OPTIONS } from '../types';
 import type { Product } from '../products';
 import { ProductBadges } from './ProductBadges';
-import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, formatPhoneDisplay } from '../sms';
+import { buildReceiptSmsBody, buildCompleteSmsBody, buildShippingSmsBody, buildSmsLink, buildLookupLink, buildLookupSmsBody, formatPhoneDisplay } from '../sms';
 import { PayBadge } from './PayBadge';
 import { avatarColor, statusPill } from './Dashboard';
 import { matchBlacklist, type BlacklistEntry } from '../blacklist';
@@ -375,9 +375,16 @@ export function OrderCard({
             </a>
             <a
               className="btn btn-ghost"
-              href={buildSmsLink(order.phone, buildShippingSmsBody(smsTrack.trackingNumber, smsTrack.carrier))}
+              href={buildSmsLink(order.phone, buildShippingSmsBody(smsTrack.trackingNumber, smsTrack.carrier, order))}
             >
               발송안내
+            </a>
+            <a
+              className="btn btn-ghost"
+              href={buildSmsLink(order.phone, buildLookupSmsBody(order))}
+              onClick={() => copyText(buildLookupLink(order), '조회 링크 복사됨')}
+            >
+              🔗 조회 링크
             </a>
           </div>
         ) : (
