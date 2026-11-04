@@ -100,9 +100,47 @@ function blacklisted_(phone, address) {
   return false;
 }
 
+// ── 우체국 접수 알림 (앱 「접수 요청」 → Bot 루틴 웹훅) ──
+// 웹훅 주소·키는 코드/저장소에 두지 않고 '스크립트 속성'에만: EPOST_WEBHOOK_URL, EPOST_WEBHOOK_KEY
+// 아무나 이 주소를 불러도 루틴을 마구 깨우지 못하게: 설정 탭 epostRequest 가 pending 이고 id 가 같을 때만, 같은 요청은 1번만.
+function notifyEpost_(body) {
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty('EPOST_WEBHOOK_URL');
+  var key = props.getProperty('EPOST_WEBHOOK_KEY');
+  if (!url || !key) return { ok: false, error: 'not-configured' };
+  var r = setting_('epostRequest');
+  var id = String(body.requestId || '');
+  if (!r || r.status !== 'pending' || !id || r.id !== id) return { ok: false, error: 'not-pending' };
+  var cache = CacheService.getScriptCache();
+  var mark = 'ep-notified-' + id + '-' + (r.shipmentIds || []).length;
+  if (cache.get(mark)) return { ok: true, dup: true };
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + key },
+    payload: JSON.stringify({ event: 'epostRequest', requestId: id, mode: r.mode || 'counter', count: (r.shipmentIds || []).length }),
+    muteHttpExceptions: true,
+  });
+  var code = res.getResponseCode();
+  if (code >= 200 && code < 300) { cache.put(mark, '1', 21600); return { ok: true, code: code }; }
+  return { ok: false, error: 'webhook-' + code };
+}
+
+/** 편집기에서 한 번 실행해서 권한(외부 요청) 허용 + 연결 확인용 */
+function testEpostWebhook() {
+  var props = PropertiesService.getScriptProperties();
+  var res = UrlFetchApp.fetch(props.getProperty('EPOST_WEBHOOK_URL'), {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + props.getProperty('EPOST_WEBHOOK_KEY') },
+    payload: JSON.stringify({ event: 'test' }),
+  });
+  Logger.log(res.getResponseCode() + ' ' + res.getContentText());
+}
+
 function doPost(e) {
   try {
     var body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if (body.action === 'notifyEpost') return json_(notifyEpost_(body));
     if (body.website) return json_({ ok: true }); // 봇용 숨은 칸
     var name = clip_(body.name, 30);
     var nick = clip_(body.nick, 30);

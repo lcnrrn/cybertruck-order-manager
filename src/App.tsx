@@ -44,6 +44,7 @@ import { BackupPanel } from './components/BackupPanel';
 import { LockedBanner, SyncGate } from './components/SyncGate';
 import { PullToRefresh } from './components/PullToRefresh';
 import { useAppUpdate } from './hooks/useAppUpdate';
+import { notifyEpost } from './epostNotify';
 import { Dashboard } from './components/Dashboard';
 import { DepositMatch } from './components/DepositMatch';
 import { PrintQueue } from './components/PrintQueue';
@@ -1045,8 +1046,10 @@ export default function App() {
                 onRequest={(r) => {
                   if (blocked()) return;
                   setEpostReq(r);
-                  showToast('📮 접수 요청 저장됨 · 채팅으로 「접수해줘」라고 말해줘');
                   void google.syncNow();
+                  if (r.status !== 'pending') { showToast('🚫 접수 대기 취소됨'); return; }
+                  showToast('📮 접수 요청 저장됨 · Bot에게 알리는 중…');
+                  void notifyEpost(r.id).then((res) => showToast(res === 'ok' ? '📮 Bot에게 알렸어 · 곧 자동 접수돼' : '알림 실패 – 채팅으로 「접수해줘」라고 말해줘'));
                 }}
                 onCancelShip={(id, shipId) => sharedCardProps.onCancelShip(id, shipId)}
                 onOpenSms={() => setSheet('shipsms')}
