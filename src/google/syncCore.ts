@@ -200,3 +200,42 @@ export function detailLoss(remote: Order[], merged: Order[]): { total: number; u
   }
   return { total, unjustified, names };
 }
+
+/**
+ * 「시트에 강제 업로드」 계획 — 지우거나 덮지 않고 '빠진 것만' 채움.
+ * - 시트 A 열에 없는 이 기기 주문(삭제 표시 제외, 샘플 제외) → 새 행으로 추가
+ * - 시트에 있는 주문인데 이 기기에만 있는 발송건(id 기준) → 시트 값은 그대로 두고 발송건만 더해서 그 행만 고쳐 씀
+ * (시트 행이 깨져 세부값을 못 읽는 _partial 행은 건드리지 않음)
+ */
+export function planForceUpload(local: Order[], remote: Order[], deleted: Record<string, number> = {}): { write: Order[]; added: string[]; shipFixed: string[] } {
+  const rmap = new Map(remote.map((o) => [o.id, o]));
+  const write: Order[] = [];
+  const added: string[] = [];
+  const shipFixed: string[] = [];
+  for (const l of local) {
+    if (isSampleOrderId(l.id) || deleted[l.id]) continue;
+    const r = rmap.get(l.id);
+    if (!r) {
+      write.push(clean(l));
+      added.push(l.name);
+      continue;
+    }
+    if (r._partial || !l.shipments?.length) continue;
+    const have = new Set((r.shipments || []).map((s) => s.id));
+    const extra = l.shipments.filter((s) => !have.has(s.id));
+    if (!extra.length) continue;
+    const sh = mergeShipments(r.shipments, extra);
+    write.push(clean({ ...r, shipments: sh, updatedAt: Math.max(r.updatedAt, l.updatedAt, Date.now()) }));
+    shipFixed.push(l.name);
+  }
+  return { write, added, shipFixed };
+}
+
+export async function forceUploadMissing(token: string, local: Order[]): Promise<{ added: string[]; shipFixed: string[] }> {
+  await ensureOrdersSheet(token);
+  const [orderVals] = await batchRead(token, [`${ORDERS_SHEET_NAME}!A:R`]);
+  const remote = parseOrdersValues(orderVals);
+  const { write, added, shipFixed } = planForceUpload(local, remote, loadDeleted());
+  if (write.length) await patchOrders(token, write);
+  return { added, shipFixed };
+}

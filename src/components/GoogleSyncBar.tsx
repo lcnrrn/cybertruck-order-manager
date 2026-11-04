@@ -7,6 +7,7 @@ interface Props {
   status: SyncStatus;
   onConnect: () => void;
   onSync: () => void;
+  onForceUpload?: () => void;
   onDisconnect: () => void;
   onOpenSettings: () => void;
   dirty?: boolean;
@@ -71,6 +72,7 @@ export function GoogleSyncBar({
   status,
   onConnect,
   onSync,
+  onForceUpload,
   onDisconnect,
   onOpenSettings,
   dirty,
@@ -116,6 +118,11 @@ export function GoogleSyncBar({
             >
               동기화
             </button>
+            {onForceUpload && (
+              <button type="button" className="btn btn-ghost btn-compact" onClick={onForceUpload} disabled={busy} title="이 기기에만 있는 주문을 시트에 올리기">
+                ⬆️ 시트에 강제 업로드
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-compact"

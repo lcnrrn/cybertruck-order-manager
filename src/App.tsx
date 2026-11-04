@@ -789,6 +789,7 @@ export default function App() {
           status={google.status}
           onConnect={handleConnectClick}
           onSync={() => void google.syncNow()}
+          onForceUpload={() => { if (window.confirm('이 기기에만 있는 주문·발송건을 시트에 올릴까?\n(시트에 있는 건 지우거나 덮지 않고, 빠진 것만 추가해)')) void google.forceUpload(); }}
           onDisconnect={google.disconnect}
           onOpenSettings={() => setSheet('google')}
           dirty={google.dirty}

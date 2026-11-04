@@ -11,7 +11,7 @@ import {
 } from '../google/gis';
 import { SETTINGS_CHANGED_EVENT } from '../settingsMeta';
 import { checkOutdated } from '../appVersion';
-import { isAuthError, ordersFingerprint, pullMergePush } from '../google/syncCore';
+import { isAuthError, ordersFingerprint, pullMergePush, forceUploadMissing } from '../google/syncCore';
 import { isQuotaError } from '../google/sheets';
 
 const LS_SIGNED = 'cybertruck-google-signed';
@@ -522,6 +522,25 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     await syncOnce('manual', '동기화 완료');
   }, [adoptToken, syncOnce, gateFail]);
 
+  const forceUpload = useCallback(async () => {
+    const token = tokenRef.current;
+    if (!token) { onToastRef.current?.('먼저 구글 시트에 연결해 줘'); return; }
+    setStatus('syncing');
+    try {
+      await inflightRef.current.catch(() => undefined);
+      const { added, shipFixed } = await forceUploadMissing(token, ordersRef.current);
+      const n = added.length + shipFixed.length;
+      onToastRef.current?.(n ? `⬆️ 시트에 올림: 새 주문 ${added.length}건${added.length ? ` (${added.slice(0, 5).join(', ')})` : ''} · 발송건 추가 ${shipFixed.length}건` : '시트에 빠진 주문 없음 ✅');
+      setLastError(null);
+      setStatus('idle');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '강제 업로드 실패';
+      setLastError(msg); setStatus('error'); onToastRef.current?.(msg);
+      return;
+    }
+    await syncOnce('manual');
+  }, [syncOnce]);
+
   function isSigned() {
     try {
       return signedIntent.current || localStorage.getItem(LS_SIGNED) === '1';
@@ -638,5 +657,6 @@ export function useGoogleSync({ orders, replaceOrders, onToast }: Options) {
     connect,
     disconnect,
     syncNow,
+    forceUpload,
   };
 }
