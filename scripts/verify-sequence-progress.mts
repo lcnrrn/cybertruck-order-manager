@@ -63,7 +63,7 @@ console.log('memo exclusion OK');
   const { autoOrderAmount } = await import('../src/production.ts');
   const n0 = names[0];
   const items3 = joinItems([n0, '견인고리 커버'], '메모입니다', { [n0]: 3 });
-  assert.equal(items3, `${n0} x3 / 견인고리 커버 / 메모입니다`);
+  assert.equal(items3, `${n0} x3 / 견인고리 커버 / 메모: 메모입니다`);
   const back = parseItemsAgainstCatalog(items3, DEFAULT_PRODUCTS);
   assert.equal(back.qty[n0], 3);
   assert.equal(back.qty['견인고리 커버'], 1);
