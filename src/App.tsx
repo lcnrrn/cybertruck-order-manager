@@ -23,7 +23,7 @@ import { ProductManager } from './components/ProductManager';
 import { SmsSettings } from './components/SmsSettings';
 import { ProductionSummary } from './components/ProductionSummary';
 import { applyPartCount, orderItemProgress, parseOrderProducts, PART_SEP, productComponents } from './production';
-import { buildProductionSummary, formatDuration, isUnpaid, orderHasProduct, orderAmount, pendingMinutes, formatWon, productUnmade } from './production';
+import { buildProductionSummary, formatDuration, isUnpaid, orderHasProduct, orderAmount, pendingMinutes, formatWon, productUnmade, snapshotPrices } from './production';
 import { SalesReport } from './components/SalesReport';
 import { FilamentInventory } from './components/FilamentInventory';
 import { loadFilament, saveFilament, type FilamentState } from './filament';
@@ -682,6 +682,20 @@ export default function App() {
     try { localStorage.setItem(KEY, JSON.stringify([...doneIds, ...add].slice(-500))); } catch { /* ignore */ }
     for (const id of add) setStatus(id, '완료');
     showToast(`📦 발송 끝난 주문 ${add.length}건 자동 완료`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, products, google.locked, google.status]);
+
+  // 가격 고정: 단가가 안 적힌 주문에 지금(또는 인상 전) 단가를 적어 둠 → 이후 제품 가격을 바꿔도 기존 주문 금액 그대로
+  useEffect(() => {
+    if (google.locked || google.status === 'syncing') return;
+    if (!products.some((p) => (p.price || 0) > 0)) return; // 판매가가 아직 안 받아졌으면 기다림
+    const t = window.setTimeout(() => {
+      for (const o of orders) {
+        const next = snapshotPrices(o, products);
+        if (next) rawUpdateOrder(o.id, { prices: next });
+      }
+    }, 3000);
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, products, google.locked, google.status]);
 

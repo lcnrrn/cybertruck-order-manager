@@ -158,16 +158,19 @@ function doPost(e) {
     var items = body.items || {};
     var parts = [];
     var total = 0;
+    var snap = {}; // 주문 시점 단가 고정 (나중에 판매가를 바꿔도 이 주문 금액은 그대로)
     Object.keys(items).forEach(function (k) {
       var q = Math.floor(Number(items[k]) || 0);
       if (k === SHIPPING || !(k in names) || q < 1) return;
       q = Math.min(q, MAX_QTY);
       parts.push(q > 1 ? k + ' x' + q : k);
       total += names[k] * q;
+      snap[k] = names[k];
     });
     if (!parts.length) return json_({ ok: false, error: '제품을 하나 이상 골라 주세요' });
     parts.push(SHIPPING);
     total += names[SHIPPING] || 0;
+    if (names[SHIPPING]) snap[SHIPPING] = names[SHIPPING];
     var req = ['닉네임 ' + nick];
     if (payer && payer !== name) req.push('입금자명 ' + payer);
     if (memo) req.push(memo.replace(/\//g, '／'));
@@ -182,7 +185,7 @@ function doPost(e) {
       var row = [
         id, name, parts.join(' / '), address, phone, SOURCE, '대기', 'false',
         String(now), String(now), '', '', '', '', '', '', '',
-        JSON.stringify({ i: id, v: 2, x: {} }),
+        JSON.stringify({ i: id, v: 2, p: snap, x: {} }),
       ];
       var r = Math.max(sh.getLastRow(), 1) + 1;
       var rng = sh.getRange(r, 1, 1, row.length);

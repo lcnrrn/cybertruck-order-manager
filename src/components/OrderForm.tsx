@@ -189,7 +189,7 @@ export function OrderForm({
         const out: Record<string, number> = {};
         for (const n of orderedSelected()) {
           const v = prices[n];
-          if (typeof v === 'number' && v !== catalogPrice(n)) out[n] = v;
+          if (typeof v === 'number' && (v !== catalogPrice(n) || initial?.prices?.[n] !== undefined)) out[n] = v; // 고정된 단가는 유지
         }
         return Object.keys(out).length ? out : undefined;
       })(),

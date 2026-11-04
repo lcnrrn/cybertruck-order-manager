@@ -506,3 +506,27 @@ export function pendingLoadByProduct(orders: Order[], catalog: Product[]): Produ
   }
   return Array.from(m.values()).sort((a, b) => b.grams - a.grams || b.minutes - a.minutes);
 }
+
+/**
+ * 가격 고정(스냅샷): 제품 관리에서 판매가를 바꿔도 이미 있는 주문 금액은 그대로 두기 위해
+ * 주문의 각 품목 단가를 주문(prices)에 적어 둠. 이미 적힌 값(직접 지정·서비스 0)은 절대 안 건드림.
+ * LEGACY_PRICES: 2026-11-04 17:52(KST) 가격 인상 전 단가 — 그 전에 들어온 주문은 옛 단가로 고정.
+ */
+export const LEGACY_PRICE_CUTOFF = 1793782338078;
+export const LEGACY_PRICES: Record<string, number> = { '안전벨트 클립 (뒷자석 3개)': 5000 };
+
+export function snapshotPrices(order: Pick<Order, 'items' | 'prices' | 'createdAt'>, catalog: Product[]): Record<string, number> | null {
+  const r = parseOrderProducts(order.items, catalog.map((c) => c.name));
+  const names = r.products.map((p) => p.name);
+  if (/택배/.test(order.items || '') && catalog.some((c) => c.name === SHIPPING_NAME) && !names.includes(SHIPPING_NAME)) names.push(SHIPPING_NAME);
+  const cur = order.prices || {};
+  const add: Record<string, number> = {};
+  for (const n of names) {
+    if (typeof cur[n] === 'number' && cur[n] >= 0) continue;
+    const legacy = (order.createdAt || 0) < LEGACY_PRICE_CUTOFF ? LEGACY_PRICES[n] : undefined;
+    const price = legacy ?? catalog.find((c) => c.name === n)?.price;
+    if (!(typeof price === 'number' && price > 0)) continue; // 판매가 모르면 건너뜀(0으로 굳히지 않음)
+    add[n] = price;
+  }
+  return Object.keys(add).length ? { ...cur, ...add } : null;
+}
