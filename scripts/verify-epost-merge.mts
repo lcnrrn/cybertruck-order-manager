@@ -1,0 +1,15 @@
+const store: Record<string, string> = {};
+(globalThis as any).localStorage = { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; } };
+const { submitEpostRequest, createEpostRequest } = await import('../src/epost.ts');
+let ok = 0, bad = 0;
+const t = (n: string, c: boolean) => { c ? ok++ : bad++; console.log(c ? 'PASS' : 'FAIL', n); };
+const y = createEpostRequest(['a1','a2','a3','a4','a5','a6','a7','a8','a9'], 1, 'visit', '2026-11-05');
+const m = submitEpostRequest(y, ['a1','b1','b2','b3','b4'], 2, 'visit', '2026-11-06');
+t('same id kept', m.id === y.id);
+t('13 merged, no dup', m.shipmentIds.length === 13);
+t('still pending', m.status === 'pending');
+t('pickup updated', m.pickupDate === '2026-11-06');
+t('counter not merged into visit', submitEpostRequest(m, ['c1'], 3, 'counter').id !== y.id);
+t('running not merged', submitEpostRequest({ ...m, status: 'running' }, ['x'], 4, 'visit').shipmentIds.length === 1);
+t('legacy no-mode = counter', submitEpostRequest({ ...m, mode: undefined }, ['z'], 5, 'counter').shipmentIds.length === 14);
+console.log(ok, 'pass', bad, 'fail'); if (bad) process.exit(1);

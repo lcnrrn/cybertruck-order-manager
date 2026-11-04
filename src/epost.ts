@@ -72,6 +72,26 @@ export function createEpostRequest(shipmentIds: string[], now = Date.now(), mode
   return r;
 }
 
+/** 대기(pending) 중인 같은 방식 요청이 있으면 새 건을 합쳐 한 번에 접수 (날짜 무관). running/done/error 면 새 요청. */
+export function canMerge(r: EpostRequest | null, mode: EpostMode): boolean {
+  return !!r && r.status === 'pending' && (r.mode || 'counter') === mode;
+}
+export function mergeIds(prev: string[], next: string[]): string[] {
+  return Array.from(new Set([...prev, ...next]));
+}
+export function submitEpostRequest(prev: EpostRequest | null, shipmentIds: string[], now = Date.now(), mode: EpostMode = 'counter', pickupDate?: string): EpostRequest {
+  if (!canMerge(prev, mode)) return createEpostRequest(shipmentIds, now, mode, pickupDate);
+  const r: EpostRequest = {
+    ...prev!,
+    ...(mode === 'visit' && pickupDate ? { pickupDate } : {}),
+    shipmentIds: mergeIds(prev!.shipmentIds, shipmentIds),
+    updatedAt: now,
+  };
+  try { localStorage.setItem(LS, JSON.stringify(r)); } catch { /* ignore */ }
+  markSettingChanged('epostRequest');
+  return r;
+}
+
 export function isBusy(r: EpostRequest | null): boolean {
   return !!r && (r.status === 'pending' || r.status === 'running');
 }

@@ -3,7 +3,7 @@ import { Check, ClipboardCheck, Loader, MessageSquare, ReceiptText, Send, Triang
 import type { Order, Shipment } from '../types';
 import { shipmentLabel } from '../shipments';
 import { formatWon } from '../production';
-import { createEpostRequest, isBusy, isWeekend, modeLabel, nextWeekday, type EpostMode, type EpostRequest } from '../epost';
+import { canMerge, isBusy, mergeIds, submitEpostRequest, isWeekend, modeLabel, nextWeekday, type EpostMode, type EpostRequest } from '../epost';
 
 const PER_PARCEL = 4000; // 3kg·80cm 창구 접수 예상 요금(원/건)
 
@@ -98,7 +98,7 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose, 
   const submit = (m: EpostMode) => {
     setConfirm(null);
     const rows = groups.find((g) => g.m === m)!.rows;
-    onRequest(createEpostRequest(rows.map((p) => p.s.id), Date.now(), m, m === 'visit' ? pickupDate : undefined));
+    onRequest(submitEpostRequest(request, rows.map((p) => p.s.id), Date.now(), m, m === 'visit' ? pickupDate : undefined));
   };
 
   return (
@@ -168,14 +168,16 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose, 
           <button
             type="button"
             className={`btn btn-primary epost-go${m === 'visit' ? ' visit' : ''}`}
-            disabled={busy || (m === 'visit' && dateBad)}
+            disabled={(busy && !canMerge(request, m)) || (m === 'visit' && dateBad) || (canMerge(request, m) && rows.every((p) => request!.shipmentIds.includes(p.s.id)))}
             onClick={() => setConfirm(m)}
           >
-            {busy ? (request?.status === 'running' ? '다른 접수 처리 중…' : '접수 대기 중… (끝나면 요청 가능)') : `${m === 'visit' ? '방문' : '창구'} 접수 요청 (${rows.length}건)`}
+            {canMerge(request, m)
+              ? (rows.every((p) => request!.shipmentIds.includes(p.s.id)) ? `접수 대기 중 (${request!.shipmentIds.length}건 한 번에)` : `대기 중 요청에 합치기 (총 ${mergeIds(request!.shipmentIds, rows.map((p) => p.s.id)).length}건)`)
+              : busy ? (request?.status === 'running' ? '다른 접수 처리 중…' : '다른 방식 접수 대기 중… (끝나면 요청 가능)') : `${m === 'visit' ? '방문' : '창구'} 접수 요청 (${rows.length}건)`}
           </button>
           {confirm === m && (
             <div className="epost-confirm" role="alertdialog">
-              <p><b>{rows.length}건</b>을 {modeLabel({ mode: m, pickupDate })}으로 요청할까?</p>
+              <p><b>{canMerge(request, m) ? mergeIds(request!.shipmentIds, rows.map((p) => p.s.id)).length : rows.length}건</b>을 한 번에 {modeLabel({ mode: m, pickupDate })}으로 요청할까?</p>
               <p className="empty-hint">예상 {formatWon(rows.length * PER_PARCEL)}{m === 'visit' ? ' · 방문 접수는 요금이 더 나올 수 있음' : ' · 창구에서 결제'}</p>
               <div className="form-actions">
                 <button type="button" className="btn btn-ghost" onClick={() => setConfirm(null)}>취소</button>
