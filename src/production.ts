@@ -79,7 +79,7 @@ export function parseOrderProducts(
     .map((p) => p.trim())
     .filter(Boolean);
   for (const part of parts) {
-    if (/^\s*요청\s*[:：]/.test(part)) continue;
+    if (/^\s*(요청|메모)\s*[:：]/.test(part)) continue;
     const sp = splitQty(part);
     let { text, qty } = sp;
     if (!text) continue;

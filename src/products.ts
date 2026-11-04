@@ -275,7 +275,7 @@ function levenshtein(a: string, b: string): number {
 }
 
 function isRequestPart(part: string): boolean {
-  return /^\s*요청\s*[:：]/.test(part);
+  return /^\s*(요청|메모)\s*[:：]/.test(part);
 }
 
 /** Score how well an items fragment matches a catalog product name (0 = none). */
@@ -396,7 +396,7 @@ export function parseItemsAgainstCatalog(
 
   for (const part of parts) {
     if (isRequestPart(part)) {
-      extras.push(part);
+      extras.push(/^\s*메모\s*[:：]/.test(part) ? part.replace(/^\s*메모\s*[:：]\s*/, '') : part);
       continue;
     }
     const sp = splitItemQty(part);
@@ -434,8 +434,12 @@ export function joinItems(selected: string[], note: string, qty?: Record<string,
     .map((s) => s.trim())
     .filter(Boolean)
     .map((s) => (qty && (qty[s] || 1) > 1 ? `${s} x${qty[s]}` : s));
+  // 메모는 「메모:」 한 칸으로 묶어 저장 — 안의 '/'·','·줄바꿈 때문에 메모 글자(예: '휴대폰', '2개')가 품목·수량으로 잡히지 않게
   const n = note.trim();
-  if (n) parts.push(n);
+  if (n) {
+    const body = n.replace(/\s*\n+\s*/g, ' ／ ').replace(/\s*\/\s*/g, ' ／ ').replace(/,/g, '，');
+    parts.push(/^\s*요청\s*[:：]/.test(body) ? body : `메모: ${body}`);
+  }
   return parts.join(' / ');
 }
 

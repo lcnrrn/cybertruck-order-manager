@@ -235,7 +235,7 @@ function doGet(e) {
     var x = {};
     try { x = JSON.parse(String(r[17] || '{}')) || {}; } catch (er) { x = {}; }
     if (x.i && x.i !== id) x = {};
-    var items = String(r[2] || '').split(/\s*\/\s*/).filter(function (s) { return s && !/^\s*요청\s*[:：]/.test(s); });
+    var items = String(r[2] || '').split(/\s*\/\s*/).filter(function (s) { return s && !/^\s*(요청|메모)\s*[:：]/.test(s); });
     var amount = r[11] !== '' && r[11] != null ? Number(r[11]) : null;
     out.push({
       no: id.slice(-4).toUpperCase(),

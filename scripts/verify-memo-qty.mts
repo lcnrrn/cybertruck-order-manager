@@ -1,0 +1,11 @@
+const { parseOrderProducts } = await import('../src/production.ts');
+const { joinItems, parseItemsAgainstCatalog } = await import('../src/products.ts');
+const ok = (n: string, c: boolean) => { console.log(c ? 'PASS' : 'FAIL', n); if (!c) process.exit(1); };
+const names = ['휴대폰 마운트 거치대', '태블릿 마그네틱 거치대', 'DC콤보+J1772 거치대', '우체국 택배'];
+const note = '네모 철판 타입 2개 서비스\n휴대폰 / 태블릿 검정색 / DC콤보 반투명 요청';
+const items = joinItems(names, note);
+const r = parseOrderProducts(items, names);
+ok('qty 1 each, memo ignored', r.products.length === 3 && r.products.every((p) => p.qty === 1) && r.others.length === 0);
+const back = parseItemsAgainstCatalog(items, names);
+ok('form round trip', back.selected.length === 4 && back.note.startsWith('네모 철판') && joinItems(back.selected, back.note) === items);
+ok('old buyer 요청 still skipped', parseOrderProducts('휴대폰 마운트 거치대 / 요청: 닉네임 a', names).products[0].qty === 1);
