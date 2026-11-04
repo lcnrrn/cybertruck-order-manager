@@ -1488,3 +1488,6 @@ html, body { overflow-x: clip; }
 .courier-fields { display: grid; gap: 8px; margin: 8px 0; }
 .courier-fields .field input { width: 100%; }
 .order-tracking a { margin-left: 4px; }
+
+.btn-danger { background: #dc2626; color: #fff; border: none; }
+.btn-danger:hover { background: #b91c1c; }

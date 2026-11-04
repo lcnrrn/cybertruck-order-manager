@@ -3,7 +3,7 @@ import { Check, ClipboardCheck, Loader, MessageSquare, ReceiptText, Send, Triang
 import type { Order, Shipment } from '../types';
 import { shipmentLabel } from '../shipments';
 import { formatWon } from '../production';
-import { canMerge, isBusy, mergeIds, submitEpostRequest, isWeekend, modeLabel, nextWeekday, type EpostMode, type EpostRequest } from '../epost';
+import { canMerge, cancelEpostRequest, isBusy, mergeIds, submitEpostRequest, isWeekend, modeLabel, nextWeekday, type EpostMode, type EpostRequest } from '../epost';
 
 const PER_PARCEL = 4000; // 3kg·80cm 창구 접수 예상 요금(원/건)
 
@@ -107,7 +107,15 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose, 
 
       {request && (
         <div className={`epost-status st-${request.status}`}>
-          {request.status === 'pending' && <b>⏳ 접수 대기 중 · 채팅으로 「접수해줘」라고 말해줘 · {modeLabel(request)}</b>}
+          {request.status === 'pending' && (
+            <>
+              <b>⏳ 접수 대기 중 · 채팅으로 「접수해줘」라고 말해줘 · {modeLabel(request)} · {request.shipmentIds.length}건</b>
+              <button type="button" className="btn btn-danger btn-compact" onClick={() => {
+                if (window.confirm(`${modeLabel(request)} ${request.shipmentIds.length}건 접수 대기를 취소할까?\n(주문은 그대로 '전송 대기'에 남고, 다시 접수 요청할 수 있어)`)) onRequest(cancelEpostRequest(request));
+              }}>접수 대기 취소</button>
+            </>
+          )}
+          {request.status === 'cancelled' && <b>🚫 접수 대기 취소됨 · {modeLabel(request)} · {request.shipmentIds.length}건 · 다시 요청 가능</b>}
           {request.status === 'running' && <b>🔄 접수 중… · {modeLabel(request)}</b>}
           {request.status === 'done' && (
             <b>
@@ -124,7 +132,7 @@ export function EpostPanel({ orders, request, onRequest, onCancelShip, onClose, 
           <small>요청 {fmtDate(request.requestedAt)} {new Date(request.requestedAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</small>
         </div>
       )}
-      {request && <RequestTimeline request={request} orders={orders} onOpenSms={onOpenSms} />}
+      {request && request.status !== 'cancelled' && <RequestTimeline request={request} orders={orders} onOpenSms={onOpenSms} />}
 
       {pending.length === 0 && (
         <>

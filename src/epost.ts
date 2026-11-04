@@ -1,7 +1,7 @@
 import { SETTING_LS_KEYS, markSettingChanged } from './settingsMeta';
 
 /** 설정 탭 'epostRequest' 행 — 앱이 pending 으로 만들고, 봇이 running → done/error 로 바꿈 (scripts/epost-request.md) */
-export type EpostStatus = 'pending' | 'running' | 'done' | 'error';
+export type EpostStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled';
 export type EpostMode = 'counter' | 'visit';
 export interface EpostRequest {
   id: string;
@@ -87,6 +87,15 @@ export function submitEpostRequest(prev: EpostRequest | null, shipmentIds: strin
     shipmentIds: mergeIds(prev!.shipmentIds, shipmentIds),
     updatedAt: now,
   };
+  try { localStorage.setItem(LS, JSON.stringify(r)); } catch { /* ignore */ }
+  markSettingChanged('epostRequest');
+  return r;
+}
+
+/** 대기(pending) 요청 취소 — 봇은 pending 만 처리하므로 cancelled 는 무시됨. 발송건은 그대로 '전송 대기'로 남음 */
+export function cancelEpostRequest(prev: EpostRequest, now = Date.now()): EpostRequest {
+  if (prev.status !== 'pending') return prev;
+  const r: EpostRequest = { ...prev, status: 'cancelled', updatedAt: now, finishedAt: now, message: '사용자가 접수 대기 취소' };
   try { localStorage.setItem(LS, JSON.stringify(r)); } catch { /* ignore */ }
   markSettingChanged('epostRequest');
   return r;

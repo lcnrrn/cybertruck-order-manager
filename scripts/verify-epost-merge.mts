@@ -13,3 +13,12 @@ t('counter not merged into visit', submitEpostRequest(m, ['c1'], 3, 'counter').i
 t('running not merged', submitEpostRequest({ ...m, status: 'running' }, ['x'], 4, 'visit').shipmentIds.length === 1);
 t('legacy no-mode = counter', submitEpostRequest({ ...m, mode: undefined }, ['z'], 5, 'counter').shipmentIds.length === 14);
 console.log(ok, 'pass', bad, 'fail'); if (bad) process.exit(1);
+const { cancelEpostRequest, isBusy } = await import('../src/epost.ts');
+const p = createEpostRequest(['a1','a2'], 10, 'visit', '2026-11-05');
+const c = cancelEpostRequest(p, 11);
+const t2 = (n: string, v: boolean) => { console.log(v ? 'PASS' : 'FAIL', n); if (!v) process.exit(1); };
+t2('cancelled', c.status === 'cancelled' && c.updatedAt === 11);
+t2('unlocks', !isBusy(c));
+t2('stored', JSON.parse(store['cybertruck-epost-request-v1']).status === 'cancelled');
+t2('new request after cancel is fresh', submitEpostRequest(c, ['b1'], 12, 'visit').shipmentIds.join() === 'b1');
+t2('running not cancellable', cancelEpostRequest({ ...p, status: 'running' }).status === 'running');
