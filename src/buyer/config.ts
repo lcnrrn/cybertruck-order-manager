@@ -55,3 +55,30 @@ export function kyungdongTrackUrl(no: string): string {
 export function epostTrackUrl(no: string): string {
   return `https://service.epost.go.kr/trace.RetrieveDomRigiTraceList.comm?sid1=${encodeURIComponent(no.replace(/\D/g, ''))}`;
 }
+
+export interface LiveProduct { name: string; price: number }
+
+/**
+ * 주문 관리 앱 「제품 관리」(시트 설정 탭 products)를 그대로 반영한 주문 목록.
+ * - 순서·판매가·추가/삭제는 앱 기준. 설명·묶음(옵션 2개 그룹)은 위 CATALOG 에 있으면 그대로 씀.
+ * - live 가 없으면(불러오기 실패) 기본 CATALOG.
+ */
+export function buildCatalog(live: LiveProduct[] | null): { groups: BuyerGroup[]; shipping: BuyerOption } {
+  if (!live || !live.length) return { groups: CATALOG, shipping: SHIPPING };
+  const price = new Map(live.map((p) => [p.name, p.price]));
+  const groups: BuyerGroup[] = [];
+  const used = new Set<BuyerGroup>();
+  for (const p of live) {
+    if (p.name === SHIPPING.name || p.name === '기타') continue;
+    const g = CATALOG.find((x) => x.options.some((o) => o.name === p.name));
+    if (g) {
+      if (used.has(g)) continue;
+      used.add(g);
+      groups.push({ ...g, options: g.options.filter((o) => price.has(o.name)).map((o) => ({ ...o, price: price.get(o.name)! })) });
+    } else {
+      groups.push({ title: p.name, options: [{ name: p.name, label: p.name, price: p.price }] });
+    }
+  }
+  const sp = price.get(SHIPPING.name);
+  return { groups, shipping: { ...SHIPPING, price: typeof sp === 'number' ? sp : SHIPPING.price } };
+}

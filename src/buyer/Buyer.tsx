@@ -17,8 +17,8 @@ import {
   Sparkles,
   Truck,
 } from 'lucide-react';
-import { BANK, CATALOG, SHIPPING, bankLabel, epostTrackUrl, kyungdongTrackUrl } from './config';
-import { apiReady, lookup, shopInfo, submitOrder, type LookupOrder, type ShopInfo } from './api';
+import { BANK, buildCatalog, bankLabel, epostTrackUrl, kyungdongTrackUrl } from './config';
+import { apiReady, fetchCatalog, lookup, shopInfo, submitOrder, type LookupOrder, type ShopInfo } from './api';
 import { orderItemProgress, pctKey, progressTotals } from '../production';
 import { TruckArt } from '../ui/Art';
 import './buyer.css';
@@ -96,6 +96,12 @@ function BankCard({ bank, amount }: { bank: { bank: string; number: string; hold
 
 function OrderPage() {
   const shop = useShop();
+  const [live, setLive] = useState<{ name: string; price: number }[] | null>(null);
+  const [liveLoaded, setLiveLoaded] = useState(!apiReady());
+  useEffect(() => {
+    if (apiReady()) void fetchCatalog().then((c) => { setLive(c); setLiveLoaded(true); });
+  }, []);
+  const { groups: CATALOG, shipping: SHIPPING } = useMemo(() => buildCatalog(live), [live]);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [f, setF] = useState({ nick: '', name: '', phone: '', address: '', payer: '', memo: '', website: '' });
   const [agree, setAgree] = useState(false);
@@ -103,7 +109,7 @@ function OrderPage() {
   const [err, setErr] = useState('');
   const [done, setDone] = useState<{ orderNo?: string; total: number; payer: string; items: [string, number][] } | null>(null);
 
-  const all = useMemo(() => CATALOG.flatMap((g) => g.options), []);
+  const all = useMemo(() => CATALOG.flatMap((g) => g.options), [CATALOG]);
   const sub = all.reduce((s, o) => s + (qty[o.name] || 0) * o.price, 0);
   const count = all.reduce((s, o) => s + (qty[o.name] || 0), 0);
   const total = count ? sub + SHIPPING.price : 0;
@@ -232,7 +238,7 @@ function OrderPage() {
           <div className="b-muted b-small">{count ? `제품 ${count}개 + 택배비` : '제품을 골라 주세요'}</div>
           <b>{won(total)}</b>
         </div>
-        <button type="button" className="b-btn" disabled={busy || !apiReady()} onClick={submit}>{busy ? '보내는 중…' : '주문하기'}</button>
+        <button type="button" className="b-btn" disabled={busy || !apiReady() || !liveLoaded} onClick={submit}>{busy ? '보내는 중…' : '주문하기'}</button>
       </div>
       {err && <div className="b-err" role="alert">{err}</div>}
       <p className="b-muted b-small b-center">입금 계좌: {bankLabel(shop.bank)} (예금주 {shop.bank.holder})</p>

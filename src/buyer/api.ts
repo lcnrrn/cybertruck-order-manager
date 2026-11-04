@@ -42,3 +42,18 @@ export async function shopInfo(): Promise<ShopInfo | null> {
     return null;
   }
 }
+
+/** 앱 「제품 관리」 목록·판매가 (설정 탭 products) — 실패하면 null */
+export async function fetchCatalog(): Promise<{ name: string; price: number }[] | null> {
+  try {
+    const r = await fetch(`${APPS_SCRIPT_URL}?action=catalog`);
+    const j = (await r.json()) as { ok?: boolean; products?: unknown };
+    if (!j?.ok || !Array.isArray(j.products)) return null;
+    const out = (j.products as { name?: unknown; price?: unknown }[])
+      .filter((p) => p && typeof p.name === 'string' && p.name)
+      .map((p) => ({ name: String(p.name), price: Number(p.price) || 0 }));
+    return out.length ? out : null;
+  } catch {
+    return null;
+  }
+}
